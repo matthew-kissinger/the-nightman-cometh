@@ -1,0 +1,36 @@
+{
+  "effects": {
+    "noise": {
+      "enabled": true,
+      "opacity": 0.15,
+      "premultiply": true
+    },
+    "vignette": {
+      "enabled": true,
+      "darkness": 0.6,
+      "offset": 0.3
+    },
+    "chromaticAberration": {
+      "enabled": false,
+      "offset": 0.001
+    },
+    "bloom": {
+      "enabled": false,
+      "intensity": 0.5,
+      "threshold": 0.9,
+      "smoothing": 0.3
+    }
+  },
+  "rendering": {
+    "pixelRatio": 1.0,
+    "antialias": false,
+    "toneMapping": "ACESFilmic",
+    "toneMappingExposure": 0.6
+  },
+  "psxStyle": {
+    "affineTextureMapping": true,
+    "vertexSnapping": 0.05,
+    "colorDepth": 16,
+    "ditherStrength": 0.03
+  }
+}

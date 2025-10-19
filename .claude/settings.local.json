@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(npm install)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(mkdir -p public/assets/models)",
+      "Bash(mv cabin.glb public/assets/models/cabin.glb)",
+      "Bash(node analyze-glb.js)",
+      "Bash(node analyze-glb.mjs)",
+      "WebSearch",
+      "Bash(npx @gltf-transform/cli inspect public/assets/models/cabin.glb)",
+      "Bash(npx gltfjsx --types public/assets/models/cabin.glb --output cabin-structure.txt)",
+      "WebFetch(domain:rapier.rs)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:gamedev.stackexchange.com)",
+      "WebFetch(domain:discourse.threejs.org)",
+      "WebFetch(domain:roystan.net)",
+      "WebFetch(domain:romanliutikov.com)",
+      "WebFetch(domain:tympanus.net)",
+      "WebFetch(domain:stackoverflow.com)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:hackernoon.com)",
+      "WebFetch(domain:sbcode.net)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:medium.com)",
+      "Bash(mkdir -p \"C:\\Users\\Mattm\\X\\the-nightman-cometh\\docs\\reference\\rapier\")",
+      "Bash(mkdir -p C:/Users/Mattm/X/the-nightman-cometh/docs/reference/threejs)",
+      "Bash(tree docs/reference -L 2)",
+      "Bash(tree docs/reference/threejs -L 1)",
+      "Bash(timeout 3)",
+      "Bash(dir publicassetstexturesground)",
+      "Bash(gh repo create the-nightman-cometh --private --source=. --remote=origin)",
+      "Bash(git init)",
+      "Bash(git add .)",
+      "Bash(rm NUL)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

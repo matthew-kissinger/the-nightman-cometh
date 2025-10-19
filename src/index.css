@@ -1,0 +1,102 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: monospace;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: none;
+}
+
+#interaction-prompt {
+  position: fixed;
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.6rem 1.2rem;
+  border: 1px solid rgba(255, 221, 170, 0.4);
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffddaa;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 900;
+}
+
+#interaction-prompt.visible {
+  opacity: 1;
+}
+
+#instructions {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  font-family: monospace;
+  color: #fff;
+  cursor: pointer;
+}
+
+.instructions-content {
+  text-align: center;
+  padding: 2rem;
+  border: 2px solid #444;
+  background: rgba(0, 0, 0, 0.8);
+  max-width: 500px;
+}
+
+.instructions-content h1 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: #ffddaa;
+}
+
+.instructions-content p {
+  margin: 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.controls {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #444;
+}
+
+.controls p {
+  margin: 0.3rem 0;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.controls strong {
+  color: #ffddaa;
+  display: inline-block;
+  min-width: 80px;
+}

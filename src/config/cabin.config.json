@@ -1,0 +1,40 @@
+{
+  "cabin": {
+    "modelPath": "/assets/models/cabin.glb",
+    "spawnPosition": [0, 0, 0],
+    "scale": 1.0
+  },
+  "doors": [
+    {
+      "id": "front_door",
+      "position": [0, 0, 3],
+      "isLocked": false
+    },
+    {
+      "id": "back_door",
+      "position": [0, 0, -3],
+      "isLocked": false
+    }
+  ],
+  "windows": [
+    {
+      "id": "window_left",
+      "position": [-2, 1.5, 0],
+      "canBoard": true
+    },
+    {
+      "id": "window_right",
+      "position": [2, 1.5, 0],
+      "canBoard": true
+    }
+  ],
+  "lighting": {
+    "ambientIntensity": 0.1,
+    "ambientColor": "#1a1a2e",
+    "flashlightIntensity": 2.0,
+    "flashlightColor": "#ffddaa",
+    "flashlightDistance": 20,
+    "flashlightAngle": 0.523,
+    "flashlightPenumbra": 0.5
+  }
+}
