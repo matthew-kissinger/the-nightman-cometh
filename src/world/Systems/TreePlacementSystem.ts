@@ -219,11 +219,13 @@ export class TreePlacementSystem {
       }
 
       // Valid position found
+      // Base scale is 0.85, with 90-110% variation
+      const baseScale = 0.85;
       return {
         treeType,
         position,
         rotation: Math.random() * Math.PI * 2,
-        scale: 0.9 + Math.random() * 0.2 // 90-110% scale variation
+        scale: baseScale * (0.9 + Math.random() * 0.2) // 76.5-93.5% of original size
       };
     }
 

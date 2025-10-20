@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EffectComposer, EffectPass, RenderPass, NoiseEffect, VignetteEffect } from 'postprocessing';
 import { PhysicsWorld } from './PhysicsWorld';
+import { PSXEffect } from '../rendering/effects/PSXEffect';
+import { ChromaticAberrationEffect } from '../rendering/effects/ChromaticAberrationEffect';
+import { ColorGradingEffect } from '../rendering/effects/ColorGradingEffect';
 import { PlayerController } from './PlayerController';
 import { CameraController } from './CameraController';
 import { InputManager } from '../utils/InputManager';
@@ -19,6 +22,8 @@ import {
   DoorSystem as DoorInteractionSystem
 } from './Systems/DoorSystem';
 import { TreeManager } from './TreeManager';
+import { PropManager } from './PropManager';
+import { BushManager } from './BushManager';
 
 export class SceneManager {
   public scene: THREE.Scene;
@@ -33,7 +38,11 @@ export class SceneManager {
   private cameraController!: CameraController;
   private inputManager!: InputManager;
   private treeManager!: TreeManager;
+  private propManager!: PropManager;
+  private bushManager!: BushManager;
   private initialized = false;
+  private psxEffect!: PSXEffect;
+  private readonly basePSXResolution = new THREE.Vector2(320, 240);
 
   // Cabin reference for physics
   private cabinMeshes: THREE.Mesh[] = [];
@@ -82,27 +91,69 @@ export class SceneManager {
     this.gltfLoader = new GLTFLoader();
 
     // Initialize post-processing
-    this.composer = new EffectComposer(renderer);
+    const composer = new EffectComposer(renderer);
+    composer.inputBuffer.texture.minFilter = THREE.NearestFilter;
+    composer.inputBuffer.texture.magFilter = THREE.NearestFilter;
+    composer.outputBuffer.texture.minFilter = THREE.NearestFilter;
+    composer.outputBuffer.texture.magFilter = THREE.NearestFilter;
+    this.composer = composer;
 
     // Add render pass
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
+    // PSX Effect (dithering, posterization)
+    // NOTE: Pixelation is handled by render target downscaling in updateComposerResolution()
+    this.psxEffect = new PSXEffect({
+      resolution: this.basePSXResolution.clone(), // Authentic PSX resolution seed
+      colorDepth: 32.0, // Color levels per channel (PSX used 15-32)
+      ditherStrength: 0.08, // Dithering intensity for horror grittiness
+      pixelationAmount: 1.0 // Disabled - using render target method instead
+    });
+
+    // Color Grading (horror atmosphere)
+    const colorGradingEffect = new ColorGradingEffect({
+      saturation: 0.7, // Desaturated for bleak atmosphere
+      contrast: 1.2, // High contrast for dramatic shadows
+      brightness: 0.85, // Darker overall
+      tint: new THREE.Color(0.75, 0.8, 1.15), // Cool blue-purple tint
+      tintStrength: 0.2 // Subtle color shift
+    });
+
+    // Chromatic Aberration (subtle lens distortion)
+    const chromaticAberrationEffect = new ChromaticAberrationEffect({
+      offset: new THREE.Vector2(0.001, 0.001), // Very subtle
+      strength: 0.5
+    });
+
     // Add noise effect (film grain)
     const noiseEffect = new NoiseEffect({
       premultiply: true
     });
-    noiseEffect.blendMode.opacity.value = 0.15;
+    noiseEffect.blendMode.opacity.value = 0.2; // Increased for PSX grittiness
 
     // Add vignette effect
     const vignetteEffect = new VignetteEffect({
-      darkness: 0.6,
-      offset: 0.3
+      darkness: 0.65, // Slightly darker for horror
+      offset: 0.25 // Tighter vignette
     });
 
-    // Combine effects
-    const effectPass = new EffectPass(this.camera, noiseEffect, vignetteEffect);
+    // Combine all effects (order matters!)
+    // 1. PSX dithering/posterization (base PSX look)
+    // 2. Color grading (mood adjustment)
+    // 3. Chromatic aberration (lens distortion)
+    // 4. Noise (film grain on top)
+    // 5. Vignette (final framing)
+    const effectPass = new EffectPass(
+      this.camera,
+      this.psxEffect,
+      colorGradingEffect,
+      chromaticAberrationEffect,
+      noiseEffect,
+      vignetteEffect
+    );
     this.composer.addPass(effectPass);
+    this.updateComposerResolution(window.innerWidth, window.innerHeight);
 
     // Initialize physics and player systems (async)
     this.initializeSystems(renderer.domElement);
@@ -116,7 +167,37 @@ export class SceneManager {
     // Initialize tree system (after physics is ready)
     this.initializeTreeSystem();
 
+    // Initialize prop system (after physics is ready)
+    this.initializePropSystem();
+
+    // Initialize bush system (after physics is ready)
+    this.initializeBushSystem();
+
     this.interactionPrompt = document.getElementById('interaction-prompt');
+
+    // Set fixed PSX resolution (1.5x = 360p for smoother PSX aesthetic)
+    this.setFixedPSXResolution(1.5);
+  }
+
+  /**
+   * Set fixed PSX resolution multiplier
+   * 1.5x = 360p (smoother PSX aesthetic)
+   */
+  private setFixedPSXResolution(multiplier: number): void {
+    const height = Math.round(this.basePSXResolution.y * multiplier);
+    const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+    const width = Math.round(height * aspect);
+
+    // Set INTERNAL render size (low res) but DISPLAY size stays full screen
+    this.composer.setSize(width, height, false); // false = don't update display size
+    this.psxEffect.resolution.set(width, height);
+
+    // Set canvas display size to full screen (stretched from low-res render)
+    const canvas = this.composer.renderer.domElement;
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+
+    console.log(`✅ PSX Resolution locked: ${width}x${height} (${multiplier}x multiplier)`);
   }
 
   private async initializeSystems(domElement: HTMLElement): Promise<void> {
@@ -190,6 +271,7 @@ export class SceneManager {
         // Enable shadows and collect meshes
         cabin.traverse((child) => {
           if (child instanceof THREE.Mesh) {
+            this.applyPSXAestheticToMesh(child);
             child.castShadow = true;
             child.receiveShadow = true;
 
@@ -265,6 +347,8 @@ export class SceneManager {
         texture.magFilter = THREE.NearestFilter; // Pixelated look
         texture.minFilter = THREE.NearestFilter;
         texture.anisotropy = 1; // No filtering
+        texture.generateMipmaps = false;
+        texture.needsUpdate = true;
       });
 
       // Grass base (200x200m to cover large area)
@@ -373,6 +457,40 @@ export class SceneManager {
     console.log('✅ Forest initialized');
   }
 
+  private async initializePropSystem(): Promise<void> {
+    // Wait for physics to be ready
+    while (!this.physicsWorld || !this.physicsWorld.isReady()) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log('🪨 Initializing environmental props...');
+
+    // Create prop manager
+    this.propManager = new PropManager(this.scene, this.physicsWorld);
+
+    // Initialize props (load models, generate placement, create instances)
+    await this.propManager.initialize();
+
+    console.log('✅ Environmental props initialized');
+  }
+
+  private async initializeBushSystem(): Promise<void> {
+    // Wait for physics to be ready
+    while (!this.physicsWorld || !this.physicsWorld.isReady()) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log('🌿 Initializing bushes...');
+
+    // Create bush manager
+    this.bushManager = new BushManager(this.scene, this.physicsWorld);
+
+    // Initialize bushes (load models, generate placement, create instances)
+    await this.bushManager.initialize();
+
+    console.log('✅ Bushes initialized');
+  }
+
   public update(deltaTime: number): void {
     if (!this.initialized) return;
 
@@ -395,7 +513,7 @@ export class SceneManager {
   public onResize(width: number, height: number): void {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.composer.setSize(width, height);
+    this.updateComposerResolution(width, height);
   }
 
   public dispose(): void {
@@ -403,7 +521,74 @@ export class SceneManager {
     if (this.cameraController) this.cameraController.dispose();
     if (this.playerController) this.playerController.dispose();
     if (this.treeManager) this.treeManager.dispose();
+    if (this.propManager) this.propManager.dispose();
+    if (this.bushManager) this.bushManager.dispose();
     if (this.physicsWorld) this.physicsWorld.dispose();
   }
-}
 
+  private applyPSXAestheticToMesh(mesh: THREE.Mesh): void {
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      if (!material) continue;
+      this.applyPSXFilteringToMaterial(material);
+    }
+  }
+
+  private applyPSXFilteringToMaterial(material: THREE.Material): void {
+    const textureSlots = [
+      'map',
+      'normalMap',
+      'roughnessMap',
+      'metalnessMap',
+      'aoMap',
+      'emissiveMap',
+      'alphaMap',
+      'bumpMap',
+      'specularMap',
+      'lightMap'
+    ] as const;
+
+    for (const slot of textureSlots) {
+      const texture = (material as any)[slot] as THREE.Texture | null | undefined;
+      this.applyPSXFilteringToTexture(texture);
+    }
+  }
+
+  private applyPSXFilteringToTexture(texture: THREE.Texture | null | undefined): void {
+    if (!texture) return;
+
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    texture.generateMipmaps = false;
+    texture.anisotropy = 1;
+    texture.needsUpdate = true;
+  }
+
+  private updateComposerResolution(width: number, height: number): void {
+    if (!this.composer || !this.psxEffect) {
+      return;
+    }
+
+    const safeWidth = Math.max(1, width);
+    const safeHeight = Math.max(1, height);
+    const aspect = safeWidth / safeHeight;
+    const baseAspect = this.basePSXResolution.x / this.basePSXResolution.y;
+
+    let targetWidth = this.basePSXResolution.x;
+    let targetHeight = this.basePSXResolution.y;
+
+    if (Math.abs(aspect - baseAspect) > 0.001) {
+      if (aspect > baseAspect) {
+        targetWidth = Math.max(1, Math.round(this.basePSXResolution.y * aspect));
+        targetHeight = this.basePSXResolution.y;
+      } else {
+        targetWidth = this.basePSXResolution.x;
+        targetHeight = Math.max(1, Math.round(this.basePSXResolution.x / aspect));
+      }
+    }
+
+    this.composer.setSize(safeWidth, safeHeight);
+    this.psxEffect.resolution.set(targetWidth, targetHeight);
+    this.psxEffect.pixelationAmount = 1.0;
+  }
+}
