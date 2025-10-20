@@ -34,7 +34,16 @@
       "Bash(gh repo create the-nightman-cometh --private --source=. --remote=origin)",
       "Bash(git init)",
       "Bash(git add .)",
-      "Bash(rm NUL)"
+      "Bash(rm NUL)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: The Nightman Cometh - 3D horror game\n\nSetting up the foundation for a Three.js and Rapier physics-based horror game featuring:\n- Entity Component System (ECS) architecture\n- Physics-based player controller\n- Camera rig system with head bob effects\n- PSX-style horror aesthetics with fog and post-processing\n- Door, board, and AI systems\n- Comprehensive documentation and research notes\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push -u origin master)",
+      "Bash(dir tree /s)",
+      "Bash(mkdir -p scripts)",
+      "Bash(blender --version)",
+      "Read(//c/Program Files/Blender Foundation/**)",
+      "Bash(powershell -ExecutionPolicy Bypass -File scripts/add-blender-to-path.ps1)",
+      "Bash(powershell -Command \"[Environment]::SetEnvironmentVariable(''Path'', [Environment]::GetEnvironmentVariable(''Path'', ''User'') + '';C:\\Program Files\\Blender Foundation\\Blender 4.4'', ''User'')\")",
+      "Bash(\"C:\\Program Files\\Blender Foundation\\Blender 4.4\\blender.exe\" --background --python scripts/convert-trees.py)"
     ],
     "deny": [],
     "ask": []

@@ -1,0 +1,195 @@
+{
+  "trees": {
+    "conifer-mid": {
+      "file": "tree-conifer-mid.glb",
+      "size_kb": 196,
+      "species": "Conifer (Pine/Spruce)",
+      "height": "Medium (6-8m)",
+      "detail_level": "medium-high",
+      "recommended_density": "medium",
+      "instances_per_zone": {
+        "near": 15,
+        "mid": 30,
+        "far": 20
+      },
+      "description": "Mid-sized conifer tree, good general-purpose forest tree",
+      "lod_distances": [0, 30, 60],
+      "physics_collider": {
+        "type": "cylinder",
+        "radius": 0.3,
+        "height": 7.0
+      }
+    },
+    "fir-tall": {
+      "file": "tree-fir-tall.glb",
+      "size_kb": 104,
+      "species": "Fir/Conifer Mix",
+      "height": "Tall (8-10m)",
+      "detail_level": "medium",
+      "recommended_density": "medium",
+      "instances_per_zone": {
+        "near": 12,
+        "mid": 25,
+        "far": 15
+      },
+      "description": "Tall fir/conifer hybrid, creates forest canopy",
+      "lod_distances": [0, 35, 70],
+      "physics_collider": {
+        "type": "cylinder",
+        "radius": 0.35,
+        "height": 9.0
+      }
+    },
+    "fir-tallest": {
+      "file": "tree-fir-tallest.glb",
+      "size_kb": 104,
+      "species": "Fir/Conifer",
+      "height": "Tallest (10-12m)",
+      "detail_level": "medium",
+      "recommended_density": "low",
+      "instances_per_zone": {
+        "near": 8,
+        "mid": 15,
+        "far": 10
+      },
+      "description": "Tallest variant, landmark/skyline trees",
+      "lod_distances": [0, 40, 80],
+      "physics_collider": {
+        "type": "cylinder",
+        "radius": 0.4,
+        "height": 11.0
+      }
+    },
+    "broadleaf-short": {
+      "file": "tree-broadleaf-short.glb",
+      "size_kb": 316,
+      "species": "Broadleaf (Oak/Maple)",
+      "height": "Short (4-6m)",
+      "detail_level": "very_high",
+      "recommended_density": "very_low",
+      "instances_per_zone": {
+        "near": 5,
+        "mid": 8,
+        "far": 0
+      },
+      "description": "Short broadleaf tree, high detail - use near cabin for variety",
+      "lod_distances": [0, 25, 50],
+      "physics_collider": {
+        "type": "cylinder",
+        "radius": 0.35,
+        "height": 5.0
+      }
+    },
+    "birch-mid": {
+      "file": "tree-birch-mid.glb",
+      "size_kb": 80,
+      "species": "Birch",
+      "height": "Medium (6-8m)",
+      "detail_level": "low",
+      "recommended_density": "high",
+      "instances_per_zone": {
+        "near": 20,
+        "mid": 60,
+        "far": 80
+      },
+      "description": "Optimized birch tree for dense forests and background - lightest file",
+      "lod_distances": [0, 40, 100],
+      "physics_collider": {
+        "type": "cylinder",
+        "radius": 0.2,
+        "height": 7.0
+      }
+    }
+  },
+  "placement_config": {
+    "exclusion_zones": {
+      "cabin": {
+        "center": [0, 0, 0],
+        "radius": 12,
+        "description": "No trees within 12m of cabin center"
+      },
+      "cabin_buffer": {
+        "center": [0, 0, 0],
+        "radius": 15,
+        "density_multiplier": 0.3,
+        "description": "30% density within 15m buffer zone"
+      },
+      "front_path": {
+        "start": [0, 0, 2.425],
+        "end": [0, 0, 52.425],
+        "width": 3,
+        "description": "No trees on 3m wide dirt path from front door"
+      }
+    },
+    "placement_zones": {
+      "near": {
+        "description": "Within 50m of cabin - high variety",
+        "radius": 50,
+        "total_trees": 60,
+        "performance_budget": "medium_detail",
+        "mix": {
+          "conifer-mid": 0.25,
+          "fir-tall": 0.2,
+          "fir-tallest": 0.13,
+          "broadleaf-short": 0.08,
+          "birch-mid": 0.34
+        }
+      },
+      "mid": {
+        "description": "50-150m from cabin - dense forest",
+        "radius": 150,
+        "total_trees": 138,
+        "performance_budget": "medium_detail",
+        "mix": {
+          "conifer-mid": 0.22,
+          "fir-tall": 0.18,
+          "fir-tallest": 0.11,
+          "broadleaf-short": 0.06,
+          "birch-mid": 0.43
+        }
+      },
+      "far": {
+        "description": "150-250m from cabin - fog zone background",
+        "radius": 250,
+        "total_trees": 125,
+        "performance_budget": "low_detail",
+        "mix": {
+          "conifer-mid": 0.16,
+          "fir-tall": 0.12,
+          "fir-tallest": 0.08,
+          "broadleaf-short": 0,
+          "birch-mid": 0.64
+        }
+      }
+    }
+  },
+  "total_active_trees": 323,
+  "lod_config": {
+    "strategy": "InstancedMesh per tree type with LOD groups",
+    "levels": [
+      {
+        "name": "high",
+        "distance": 0,
+        "description": "Full detail geometry"
+      },
+      {
+        "name": "medium",
+        "distance": 30,
+        "description": "Medium detail - use birch-mid as LOD for all"
+      },
+      {
+        "name": "low",
+        "distance": 70,
+        "description": "Billboard/impostor (future optimization)"
+      }
+    ]
+  },
+  "performance_notes": [
+    "Use InstancedMesh for each tree type separately",
+    "Implement frustum culling per instance",
+    "LOD: Swap high-detail trees to birch-mid geometry at 30m+",
+    "Consider three-mesh-bvh for spatial culling (already in deps)",
+    "Fog ends at ~50m, cull trees beyond fog entirely",
+    "Use shared materials across instances to reduce draw calls"
+  ]
+}

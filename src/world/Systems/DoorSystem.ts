@@ -14,19 +14,19 @@ interface DoorSpawnConfig {
   openSpeed: number;
   interactLabel: string;
   locked: boolean;
+  hinge: 'min' | 'max';
 }
 
 interface DoorRuntime {
   eid: number;
   mesh: THREE.Mesh;
+  pivot: THREE.Group;
   closedQuat: THREE.Quaternion;
   openQuat: THREE.Quaternion;
   currentQuat: THREE.Quaternion;
   hingeWorld: THREE.Vector3;
   interactionPoint: THREE.Vector3;
   interactionOffsetLocal: THREE.Vector3;
-  normalLocal: THREE.Vector3;
-  worldNormal: THREE.Vector3;
   colliderOffset: THREE.Vector3;
   halfExtents: { x: number; y: number; z: number };
   rigidBody: RAPIER.RigidBody | null;
@@ -37,11 +37,12 @@ interface DoorRuntime {
 }
 
 const DEFAULT_DOOR_CONFIG: DoorSpawnConfig = {
-  openAngle: THREE.MathUtils.degToRad(95),
+  openAngle: THREE.MathUtils.degToRad(90),
   openDirection: 1,
   openSpeed: 2.2,
   interactLabel: 'Door',
-  locked: false
+  locked: false,
+  hinge: 'min'
 };
 
 const doorQuery = defineQuery([Door, Transform]);
@@ -62,7 +63,10 @@ let dependencies:
 const tempVec = new THREE.Vector3();
 const tempVec2 = new THREE.Vector3();
 const tempVec3 = new THREE.Vector3();
+const tempVec4 = new THREE.Vector3();
+const tempVec5 = new THREE.Vector3();
 const tempQuat = new THREE.Quaternion();
+const tempQuat2 = new THREE.Quaternion();
 const upAxis = new THREE.Vector3(0, 1, 0);
 
 export function initDoorSystem(deps: {
@@ -106,56 +110,108 @@ export function registerDoorMesh(
     return;
   }
 
+  const parent = mesh.parent;
+  if (!parent) {
+    console.warn(`Door mesh ${mesh.name} has no parent, skipping door registration`);
+    return;
+  }
+
+  parent.updateMatrixWorld(true);
+  mesh.updateMatrixWorld(true);
+
   const size = new THREE.Vector3();
   boundingBox.getSize(size);
 
   const center = new THREE.Vector3();
   boundingBox.getCenter(center);
 
-  const closedQuat = mesh.quaternion.clone();
-  const rotationDelta = new THREE.Quaternion().setFromAxisAngle(
-    upAxis,
-    config.openAngle * config.openDirection
+  const hingeAxis = Math.abs(size.x) >= Math.abs(size.z) ? 'x' : 'z';
+  const hingeLocal = center.clone();
+  if (hingeAxis === 'x') {
+    hingeLocal.x = config.hinge === 'max' ? boundingBox.max.x : boundingBox.min.x;
+  } else {
+    hingeLocal.z = config.hinge === 'max' ? boundingBox.max.z : boundingBox.min.z;
+  }
+  const localOffset = new THREE.Vector3().subVectors(center, hingeLocal);
+  const meshLocalScale = mesh.scale.clone();
+
+  const meshLocalMatrix = new THREE.Matrix4().compose(
+    localOffset.clone(),
+    new THREE.Quaternion(),
+    meshLocalScale.clone()
   );
-  const openQuat = closedQuat.clone().multiply(rotationDelta);
+  const meshLocalMatrixInv = meshLocalMatrix.clone().invert();
+
+  const parentMatrixWorldInv = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+  const meshWorldMatrix = mesh.matrixWorld.clone();
+  const pivotMatrix = new THREE.Matrix4()
+    .multiplyMatrices(parentMatrixWorldInv, meshWorldMatrix)
+    .multiply(meshLocalMatrixInv);
+
+  const pivotPosition = new THREE.Vector3();
+  const pivotQuaternion = new THREE.Quaternion();
+  const pivotScale = new THREE.Vector3();
+  pivotMatrix.decompose(pivotPosition, pivotQuaternion, pivotScale);
+
+  const pivot = new THREE.Group();
+  pivot.name = `${mesh.name}_pivot`;
+  pivot.position.copy(pivotPosition);
+  pivot.quaternion.copy(pivotQuaternion);
+  pivot.scale.copy(pivotScale);
+
+  parent.add(pivot);
+  parent.remove(mesh);
+  pivot.add(mesh);
+
+  mesh.position.copy(localOffset);
+  mesh.quaternion.identity();
+  mesh.scale.copy(meshLocalScale);
+  mesh.updateMatrixWorld(true);
+  pivot.updateMatrixWorld(true);
+
+  const hingeWorld = new THREE.Vector3();
+  pivot.getWorldPosition(hingeWorld);
+
+  const openQuat = pivot.quaternion.clone();
+  const swing = -config.openAngle * config.openDirection;
+  const rotationToClosed = new THREE.Quaternion().setFromAxisAngle(upAxis, swing);
+  const closedQuat = openQuat.clone().multiply(rotationToClosed);
+
+  pivot.quaternion.copy(openQuat);
+  pivot.updateMatrixWorld(true);
 
   const eid = addEntity(ecsWorld);
   addComponent(ecsWorld, Door, eid);
   addComponent(ecsWorld, Transform, eid);
 
-  Door.isOpen[eid] = 0;
-  Door.openProgress[eid] = 0;
+  Door.isOpen[eid] = 1;
+  Door.openProgress[eid] = 1;
   Door.isLocked[eid] = config.locked ? 1 : 0;
-
-  mesh.updateMatrixWorld(true);
-  const hingeWorld = new THREE.Vector3();
-  mesh.getWorldPosition(hingeWorld);
 
   Transform.x[eid] = hingeWorld.x;
   Transform.y[eid] = hingeWorld.y;
   Transform.z[eid] = hingeWorld.z;
-  Transform.rotX[eid] = mesh.rotation.x;
-  Transform.rotY[eid] = mesh.rotation.y;
-  Transform.rotZ[eid] = mesh.rotation.z;
-  Transform.scaleX[eid] = mesh.scale.x;
-  Transform.scaleY[eid] = mesh.scale.y;
-  Transform.scaleZ[eid] = mesh.scale.z;
+  Transform.rotX[eid] = pivot.rotation.x;
+  Transform.rotY[eid] = pivot.rotation.y;
+  Transform.rotZ[eid] = pivot.rotation.z;
+  Transform.scaleX[eid] = pivot.scale.x;
+  Transform.scaleY[eid] = pivot.scale.y;
+  Transform.scaleZ[eid] = pivot.scale.z;
 
-  const interactionOffsetLocal = center.clone();
-  interactionOffsetLocal.z += size.z * 0.2;
+  const interactionOffsetLocal = localOffset.clone();
+  interactionOffsetLocal.y = -size.y * 0.15;
 
   const runtime: DoorRuntime = {
     eid,
     mesh,
+    pivot,
     closedQuat,
     openQuat,
-    currentQuat: mesh.quaternion.clone(),
+    currentQuat: openQuat.clone(),
     hingeWorld,
     interactionPoint: new THREE.Vector3(),
     interactionOffsetLocal,
-    normalLocal: new THREE.Vector3(0, 0, 1),
-    worldNormal: new THREE.Vector3(),
-    colliderOffset: center,
+    colliderOffset: localOffset.clone(),
     halfExtents: {
       x: size.x * 0.5,
       y: size.y * 0.5,
@@ -163,7 +219,7 @@ export function registerDoorMesh(
     },
     rigidBody: null,
     collider: null,
-    target: 0,
+    target: 1,
     speed: config.openSpeed,
     label: config.interactLabel
   };
@@ -194,11 +250,13 @@ export function registerDoorMesh(
       y: hingeWorld.y,
       z: hingeWorld.z
     });
+    const initialWorldQuat = new THREE.Quaternion();
+    pivot.getWorldQuaternion(initialWorldQuat);
     body.setNextKinematicRotation({
-      x: runtime.currentQuat.x,
-      y: runtime.currentQuat.y,
-      z: runtime.currentQuat.z,
-      w: runtime.currentQuat.w
+      x: initialWorldQuat.x,
+      y: initialWorldQuat.y,
+      z: initialWorldQuat.z,
+      w: initialWorldQuat.w
     });
   } else {
     console.warn('Physics world not ready, skipping door collider creation');
@@ -229,33 +287,33 @@ export function DoorSystem(world: IWorld, deltaTime: number): void {
 
   const interactPressed = inputManager.consumeInteractPress();
   const playerPos = playerController.getCameraPosition();
-  const forward = camera.getWorldDirection(tempVec).setY(0);
-  if (forward.lengthSq() > 0) {
-    forward.normalize();
+  const cameraForward = camera.getWorldDirection(tempVec);
+  if (cameraForward.lengthSq() > 0) {
+    cameraForward.normalize();
+  }
+  const cameraForwardHorizontal = tempVec3.set(cameraForward.x, 0, cameraForward.z);
+  const hasHorizontalForward = cameraForwardHorizontal.lengthSq() > 0;
+  if (hasHorizontalForward) {
+    cameraForwardHorizontal.normalize();
   }
 
   const maxDistance = 1.7;
   const maxDistanceSq = maxDistance * maxDistance;
-  const facingThreshold = Math.cos(THREE.MathUtils.degToRad(60));
+  const facingThresholdHorizontal = Math.cos(THREE.MathUtils.degToRad(60));
+  const facingThreshold3D = Math.cos(THREE.MathUtils.degToRad(35));
 
   let bestDoor: DoorRuntime | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
   for (const door of doorInstances) {
-    door.mesh.updateMatrixWorld();
-    door.mesh.getWorldPosition(door.hingeWorld);
+    door.pivot.updateMatrixWorld(true);
+    door.pivot.getWorldPosition(door.hingeWorld);
 
     door.interactionPoint.copy(door.interactionOffsetLocal);
-    door.mesh.localToWorld(door.interactionPoint);
-
-    door.worldNormal.copy(door.normalLocal);
-    door.mesh.localToWorld(door.worldNormal);
-    door.worldNormal.sub(door.hingeWorld).normalize();
+    door.pivot.localToWorld(door.interactionPoint);
 
     const toDoor = tempVec2.copy(door.interactionPoint).sub(playerPos);
-    const horizontal = tempVec3.set(toDoor.x, 0, toDoor.z);
-    const distanceSq = horizontal.lengthSq();
-
+    const distanceSq = toDoor.lengthSq();
     if (distanceSq > maxDistanceSq) {
       continue;
     }
@@ -264,13 +322,24 @@ export function DoorSystem(world: IWorld, deltaTime: number): void {
       continue;
     }
 
-    horizontal.normalize();
-    const facingScore = forward.dot(horizontal);
-    if (facingScore < facingThreshold) {
+    const toDoorDir = tempVec5.copy(toDoor).normalize();
+    const facingScore3D = cameraForward.dot(toDoorDir);
+    if (facingScore3D < facingThreshold3D) {
       continue;
     }
 
-    const score = distanceSq - facingScore * 0.3;
+    const horizontal = tempVec4.set(toDoor.x, 0, toDoor.z);
+    const horizontalLengthSq = horizontal.lengthSq();
+    let facingScoreHorizontal = facingScore3D;
+    if (horizontalLengthSq > 0 && hasHorizontalForward) {
+      horizontal.normalize();
+      facingScoreHorizontal = cameraForwardHorizontal.dot(horizontal);
+      if (facingScoreHorizontal < facingThresholdHorizontal) {
+        continue;
+      }
+    }
+
+    const score = distanceSq - facingScoreHorizontal * 0.3 - facingScore3D * 0.2;
     if (score < bestScore) {
       bestScore = score;
       bestDoor = door;
@@ -313,26 +382,27 @@ export function DoorSystem(world: IWorld, deltaTime: number): void {
     tempQuat.copy(door.closedQuat);
     tempQuat.slerp(door.openQuat, next);
     door.currentQuat.copy(tempQuat);
-    door.mesh.quaternion.copy(door.currentQuat);
-    door.mesh.updateMatrixWorld();
+    door.pivot.quaternion.copy(door.currentQuat);
+    door.pivot.updateMatrixWorld(true);
 
     const hingeWorld = door.hingeWorld;
     Transform.x[door.eid] = hingeWorld.x;
     Transform.y[door.eid] = hingeWorld.y;
     Transform.z[door.eid] = hingeWorld.z;
 
-    const euler = door.mesh.rotation;
+    const euler = door.pivot.rotation;
     Transform.rotX[door.eid] = euler.x;
     Transform.rotY[door.eid] = euler.y;
     Transform.rotZ[door.eid] = euler.z;
 
     if (door.rigidBody && physicsWorld.world) {
+      const worldQuat = door.pivot.getWorldQuaternion(tempQuat2);
       door.rigidBody.setNextKinematicTranslation({ x: hingeWorld.x, y: hingeWorld.y, z: hingeWorld.z });
       door.rigidBody.setNextKinematicRotation({
-        x: door.currentQuat.x,
-        y: door.currentQuat.y,
-        z: door.currentQuat.z,
-        w: door.currentQuat.w
+        x: worldQuat.x,
+        y: worldQuat.y,
+        z: worldQuat.z,
+        w: worldQuat.w
       });
     }
   }

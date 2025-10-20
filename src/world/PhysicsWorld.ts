@@ -101,6 +101,24 @@ export class PhysicsWorld {
   }
 
   /**
+   * Create static cylinder collider (for tree trunks, poles, etc)
+   */
+  public createCylinderCollider(
+    radius: number,
+    height: number,
+    position: { x: number; y: number; z: number },
+    rotation: { x: number; y: number; z: number; w: number }
+  ): RAPIER.Collider {
+    const colliderDesc = RAPIER.ColliderDesc.cylinder(height / 2, radius)
+      .setTranslation(position.x, position.y, position.z)
+      .setRotation(rotation)
+      .setFriction(0.7)
+      .setRestitution(0);
+
+    return this.world.createCollider(colliderDesc);
+  }
+
+  /**
    * Clean up physics world
    */
   public dispose(): void {

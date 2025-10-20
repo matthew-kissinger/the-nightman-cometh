@@ -18,6 +18,7 @@ import {
   registerDoorMesh,
   DoorSystem as DoorInteractionSystem
 } from './Systems/DoorSystem';
+import { TreeManager } from './TreeManager';
 
 export class SceneManager {
   public scene: THREE.Scene;
@@ -31,12 +32,19 @@ export class SceneManager {
   private playerController!: PlayerController;
   private cameraController!: CameraController;
   private inputManager!: InputManager;
+  private treeManager!: TreeManager;
   private initialized = false;
 
   // Cabin reference for physics
   private cabinMeshes: THREE.Mesh[] = [];
   private pendingDoorMeshes: THREE.Mesh[] = [];
   private interactionPrompt: HTMLElement | null = null;
+  private readonly validDoorNames = new Set(['Geo_Door_Front', 'Geo_Door_Back', 'Geo_Door_Bedroom']);
+  private readonly doorOverrides: Record<string, Partial<{ openDirection: number; hinge: 'min' | 'max' }>> = {
+    Geo_Door_Front: { openDirection: -1, hinge: 'min' },
+    Geo_Door_Back: { openDirection: -1, hinge: 'min' },
+    Geo_Door_Bedroom: { openDirection: 1, hinge: 'min' }
+  };
 
   constructor(renderer: THREE.WebGLRenderer) {
 
@@ -104,6 +112,9 @@ export class SceneManager {
 
     // Load and setup ground textures
     this.setupGroundPlanes();
+
+    // Initialize tree system (after physics is ready)
+    this.initializeTreeSystem();
 
     this.interactionPrompt = document.getElementById('interaction-prompt');
   }
@@ -183,7 +194,7 @@ export class SceneManager {
             child.receiveShadow = true;
 
             const lowerName = child.name.toLowerCase();
-            const isDoor = lowerName.includes('door');
+            const isDoor = this.validDoorNames.has(child.name);
 
             if (isDoor) {
               this.pendingDoorMeshes.push(child);
@@ -203,7 +214,8 @@ export class SceneManager {
 
         for (const doorMesh of this.pendingDoorMeshes) {
           registerDoorMesh(doorMesh, {
-            interactLabel: this.formatDoorLabel(doorMesh.name)
+            interactLabel: this.formatDoorLabel(doorMesh.name),
+            ...this.doorOverrides[doorMesh.name]
           });
         }
         this.pendingDoorMeshes = [];
@@ -344,6 +356,23 @@ export class SceneManager {
     console.log(`✅ Cabin physics collision added (${this.cabinMeshes.length} meshes)`);
   }
 
+  private async initializeTreeSystem(): Promise<void> {
+    // Wait for physics to be ready
+    while (!this.physicsWorld || !this.physicsWorld.isReady()) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log('🌲 Initializing forest...');
+
+    // Create tree manager
+    this.treeManager = new TreeManager(this.scene, this.camera, this.physicsWorld);
+
+    // Initialize trees (load models, generate placement, create instances)
+    await this.treeManager.initialize();
+
+    console.log('✅ Forest initialized');
+  }
+
   public update(deltaTime: number): void {
     if (!this.initialized) return;
 
@@ -373,6 +402,8 @@ export class SceneManager {
     if (this.inputManager) this.inputManager.dispose();
     if (this.cameraController) this.cameraController.dispose();
     if (this.playerController) this.playerController.dispose();
+    if (this.treeManager) this.treeManager.dispose();
     if (this.physicsWorld) this.physicsWorld.dispose();
   }
 }
+
