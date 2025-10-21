@@ -5,6 +5,7 @@ import { PhysicsWorld } from './PhysicsWorld';
 import { PSXEffect } from '../rendering/effects/PSXEffect';
 import { ChromaticAberrationEffect } from '../rendering/effects/ChromaticAberrationEffect';
 import { ColorGradingEffect } from '../rendering/effects/ColorGradingEffect';
+import { DepthFogEffect } from '../rendering/effects/DepthFogEffect';
 import { PlayerController } from './PlayerController';
 import { CameraController } from './CameraController';
 import { InputManager } from '../utils/InputManager';
@@ -24,6 +25,9 @@ import {
 import { TreeManager } from './TreeManager';
 import { PropManager } from './PropManager';
 import { BushManager } from './BushManager';
+import { AudioManager } from '../audio/AudioManager';
+import { FootstepSystem } from './Systems/FootstepSystem';
+import { FoliagePlacementCoordinator } from './Systems/FoliagePlacementCoordinator';
 
 export class SceneManager {
   public scene: THREE.Scene;
@@ -40,7 +44,14 @@ export class SceneManager {
   private treeManager!: TreeManager;
   private propManager!: PropManager;
   private bushManager!: BushManager;
+  private audioManager!: AudioManager;
+  private footstepSystem!: FootstepSystem;
+  private foliageCoordinator!: FoliagePlacementCoordinator;
   private initialized = false;
+
+  // Wind audio
+  private windAudioSources: THREE.PositionalAudio[] = [];
+  private activeWindSounds: Set<THREE.PositionalAudio> = new Set();
   private psxEffect!: PSXEffect;
   private readonly basePSXResolution = new THREE.Vector2(320, 240);
 
@@ -59,8 +70,16 @@ export class SceneManager {
 
     // Initialize scene
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x000000);
-    this.scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+    // Enhanced fog system (2025 techniques)
+    // Using exponential fog for realistic atmospheric scattering
+    // Density tuned for horror atmosphere - creates depth without obscuring nearby objects
+    const fogColor = 0x050508; // Very dark blue-gray for depth perception
+    this.scene.background = new THREE.Color(fogColor); // Match background to fog for seamless fade
+    this.scene.fog = new THREE.FogExp2(
+      fogColor,  // Color matches background
+      0.035      // Increased density for more atmospheric, claustrophobic feel
+    );
 
     // Initialize camera (will be controlled by PointerLockControls)
     this.camera = new THREE.PerspectiveCamera(
@@ -72,14 +91,28 @@ export class SceneManager {
     this.camera.position.set(0, 1.5, 0); // Start at cabin center
 
     // Initialize flashlight (spotlight attached to camera)
-    this.flashlight = new THREE.SpotLight(0xffddaa, 2, 20, Math.PI / 6, 0.5, 1);
+    // Modern 2025 best practices:
+    // - Higher intensity (4.5) for dramatic horror lighting
+    // - Quadratic decay (2) for realistic physical falloff
+    // - Tighter angle (π/7 ~25.7°) for focused beam
+    // - Higher penumbra (0.7) for softer, more atmospheric edges
+    // - 1024x1024 shadows (2025 standard compromise between quality and performance)
+    this.flashlight = new THREE.SpotLight(
+      0xffddaa,        // Warm color
+      4.5,             // Intensity (2025: 3-5 range for dramatic effect)
+      25,              // Distance (extended for better range)
+      Math.PI / 7,     // Angle (~25.7° - tighter, more focused)
+      0.7,             // Penumbra (softer edges for realism)
+      2                // Decay (quadratic - physically accurate)
+    );
     this.flashlight.position.copy(this.camera.position);
     this.flashlight.target.position.set(0, 0, -1);
     this.flashlight.castShadow = true;
-    this.flashlight.shadow.mapSize.width = 512; // PSX-style low-res shadows
-    this.flashlight.shadow.mapSize.height = 512;
+    this.flashlight.shadow.mapSize.width = 1024; // 2025 standard (quality/performance balance)
+    this.flashlight.shadow.mapSize.height = 1024;
     this.flashlight.shadow.camera.near = 0.5;
-    this.flashlight.shadow.camera.far = 20;
+    this.flashlight.shadow.camera.far = 25;
+    this.flashlight.shadow.bias = -0.0001; // Prevent shadow acne
     this.scene.add(this.flashlight);
     this.scene.add(this.flashlight.target);
 
@@ -132,6 +165,14 @@ export class SceneManager {
     });
     noiseEffect.blendMode.opacity.value = 0.2; // Increased for PSX grittiness
 
+    // Depth-based fog effect (2025 modern technique)
+    // Post-processing fog using depth buffer for enhanced atmospheric scattering
+    const depthFogEffect = new DepthFogEffect({
+      fogColor: new THREE.Color(fogColor),
+      fogDensity: 0.4, // Subtle post-process fog
+      useLinear: false // Exponential fog for realistic scattering
+    });
+
     // Add vignette effect
     const vignetteEffect = new VignetteEffect({
       darkness: 0.65, // Slightly darker for horror
@@ -141,19 +182,27 @@ export class SceneManager {
     // Combine all effects (order matters!)
     // 1. PSX dithering/posterization (base PSX look)
     // 2. Color grading (mood adjustment)
-    // 3. Chromatic aberration (lens distortion)
-    // 4. Noise (film grain on top)
-    // 5. Vignette (final framing)
+    // 3. Depth fog (enhanced atmospheric depth)
+    // 4. Chromatic aberration (lens distortion)
+    // 5. Noise (film grain on top)
+    // 6. Vignette (final framing)
     const effectPass = new EffectPass(
       this.camera,
       this.psxEffect,
       colorGradingEffect,
+      depthFogEffect,
       chromaticAberrationEffect,
       noiseEffect,
       vignetteEffect
     );
     this.composer.addPass(effectPass);
     this.updateComposerResolution(window.innerWidth, window.innerHeight);
+
+    // Initialize audio system
+    this.audioManager = new AudioManager(this.camera);
+
+    // Initialize footstep system
+    this.footstepSystem = new FootstepSystem(this.audioManager);
 
     // Initialize physics and player systems (async)
     this.initializeSystems(renderer.domElement);
@@ -164,14 +213,14 @@ export class SceneManager {
     // Load and setup ground textures
     this.setupGroundPlanes();
 
-    // Initialize tree system (after physics is ready)
+    // Initialize foliage coordinator for collision-free placement
+    this.foliageCoordinator = new FoliagePlacementCoordinator();
+
+    // Initialize foliage systems in order (trees first, then bushes, then rocks)
+    // This ensures proper spacing between all objects
     this.initializeTreeSystem();
-
-    // Initialize prop system (after physics is ready)
-    this.initializePropSystem();
-
-    // Initialize bush system (after physics is ready)
     this.initializeBushSystem();
+    this.initializePropSystem();
 
     this.interactionPrompt = document.getElementById('interaction-prompt');
 
@@ -193,9 +242,12 @@ export class SceneManager {
     this.psxEffect.resolution.set(width, height);
 
     // Set canvas display size to full screen (stretched from low-res render)
-    const canvas = this.composer.renderer.domElement;
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    const renderer = (this.composer as any).renderer || (this.composer as any)._renderer;
+    if (renderer?.domElement) {
+      const canvas = renderer.domElement;
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+    }
 
     console.log(`✅ PSX Resolution locked: ${width}x${height} (${multiplier}x multiplier)`);
   }
@@ -220,6 +272,16 @@ export class SceneManager {
     this.cameraController.onLock = () => {
       const instructions = document.getElementById('instructions');
       if (instructions) instructions.style.display = 'none';
+
+      // Resume audio context on user interaction (browser autoplay policy)
+      if (this.audioManager && this.audioManager['listener']) {
+        const context = this.audioManager['listener'].context;
+        if (context.state === 'suspended') {
+          context.resume().then(() => {
+            console.log('🔊 Audio context resumed after user interaction');
+          });
+        }
+      }
     };
     this.cameraController.onUnlock = () => {
       const instructions = document.getElementById('instructions');
@@ -254,12 +316,17 @@ export class SceneManager {
       playerController: this.playerController,
       physicsWorld: this.physicsWorld,
       cameraController: this.cameraController,
-      promptElement: promptElement ?? null
+      promptElement: promptElement ?? null,
+      audioManager: this.audioManager
     });
 
     this.initialized = true;
     console.log('✅ All player systems initialized');
     console.log('   Click to lock pointer and start playing!');
+
+    // Load ambient forest audio and footstep sounds
+    this.loadAmbientAudio();
+    this.loadFootstepSounds();
   }
 
   private loadCabinModel(): void {
@@ -304,6 +371,9 @@ export class SceneManager {
 
         // Add cabin collision to physics world
         this.addCabinPhysics();
+
+        // Set cabin bounds for footstep detection
+        this.setupCabinFootstepBounds(cabin);
 
         console.log('✅ Cabin model loaded successfully');
         console.log('   📏 Dimensions: 6.6m wide x 3.8m tall x 7.4m deep');
@@ -448,13 +518,14 @@ export class SceneManager {
 
     console.log('🌲 Initializing forest...');
 
-    // Create tree manager
-    this.treeManager = new TreeManager(this.scene, this.camera, this.physicsWorld);
+    // Create tree manager with foliage coordinator
+    this.treeManager = new TreeManager(this.scene, this.camera, this.physicsWorld, this.foliageCoordinator);
 
     // Initialize trees (load models, generate placement, create instances)
     await this.treeManager.initialize();
 
     console.log('✅ Forest initialized');
+    console.log(`   Trees registered in coordinator: ${this.foliageCoordinator.getCountByType('tree')}`);
   }
 
   private async initializePropSystem(): Promise<void> {
@@ -465,13 +536,14 @@ export class SceneManager {
 
     console.log('🪨 Initializing environmental props...');
 
-    // Create prop manager
-    this.propManager = new PropManager(this.scene, this.physicsWorld);
+    // Create prop manager with foliage coordinator
+    this.propManager = new PropManager(this.scene, this.physicsWorld, this.foliageCoordinator);
 
     // Initialize props (load models, generate placement, create instances)
     await this.propManager.initialize();
 
     console.log('✅ Environmental props initialized');
+    console.log(`   Rocks registered in coordinator: ${this.foliageCoordinator.getCountByType('rock')}`);
   }
 
   private async initializeBushSystem(): Promise<void> {
@@ -482,13 +554,139 @@ export class SceneManager {
 
     console.log('🌿 Initializing bushes...');
 
-    // Create bush manager
-    this.bushManager = new BushManager(this.scene, this.physicsWorld);
+    // Create bush manager with foliage coordinator
+    this.bushManager = new BushManager(this.scene, this.physicsWorld, this.foliageCoordinator);
 
     // Initialize bushes (load models, generate placement, create instances)
     await this.bushManager.initialize();
 
     console.log('✅ Bushes initialized');
+    console.log(`   Bushes registered in coordinator: ${this.foliageCoordinator.getCountByType('bush')}`);
+  }
+
+  private async loadAmbientAudio(): Promise<void> {
+    try {
+      console.log('🔊 Loading ambient forest audio...');
+      await this.audioManager.loadAmbient('/assets/audio/forest_night_loop.ogg', 0.6);
+      console.log('✅ Ambient audio loaded and playing at volume 0.6');
+
+      // Setup wind audio triggers
+      this.setupWindAudio();
+    } catch (error) {
+      console.warn('⚠️ Failed to load ambient audio', error);
+    }
+  }
+
+  private async loadFootstepSounds(): Promise<void> {
+    try {
+      console.log('👣 Loading footstep sounds...');
+      await this.footstepSystem.loadSounds();
+    } catch (error) {
+      console.warn('⚠️ Failed to load footstep sounds', error);
+    }
+  }
+
+  private setupCabinFootstepBounds(cabin: THREE.Group): void {
+    // Calculate cabin bounds for footstep surface detection
+    const box = new THREE.Box3().setFromObject(cabin);
+
+    // Expand bounds slightly to include doorway transitions
+    box.expandByScalar(0.5);
+
+    this.footstepSystem.setCabinBounds(box);
+  }
+
+  private async setupWindAudio(): Promise<void> {
+    if (!this.treeManager) {
+      console.warn('⚠️ TreeManager not ready, wind audio setup skipped');
+      return;
+    }
+
+    const windSystem = this.treeManager.getWindSystem();
+
+    // Pre-create positional wind audio sources around the player
+    const numWindSources = 6; // 6 sources around the player
+    const windRadius = 15; // 15m radius
+
+    for (let i = 0; i < numWindSources; i++) {
+      const angle = (i / numWindSources) * Math.PI * 2;
+      const x = Math.cos(angle) * windRadius;
+      const z = Math.sin(angle) * windRadius;
+
+      try {
+        const windSound = await this.audioManager.play3D(
+          `wind_${i}`,
+          '/assets/audio/wind_trees.ogg',
+          new THREE.Vector3(x, 2, z),
+          0.0, // Start at 0 volume
+          12.0, // Reference distance
+          true // Loop
+        );
+
+        // Keep playing at 0 volume (will increase during gusts)
+        windSound.setVolume(0);
+        this.windAudioSources.push(windSound);
+        this.scene.add(windSound); // Add to scene so it follows world space
+      } catch (error) {
+        console.warn(`⚠️ Failed to load wind audio source ${i}`, error);
+      }
+    }
+
+    console.log(`✅ Created ${this.windAudioSources.length} wind audio sources`);
+
+    // Hook up wind gust callbacks
+    windSystem.onGustStart = (strength: number) => {
+      this.onWindGustStart(strength);
+    };
+
+    windSystem.onGustEnd = () => {
+      this.onWindGustEnd();
+    };
+  }
+
+  private onWindGustStart(strength: number): void {
+    console.log(`💨 Wind gust started (strength: ${strength.toFixed(2)})`);
+
+    // Play wind sounds with volume based on gust strength
+    const volume = Math.min(strength * 1.2, 1.0);
+
+    this.windAudioSources.forEach(sound => {
+      sound.setVolume(volume);
+
+      if (!sound.isPlaying) {
+        sound.play();
+      }
+
+      this.activeWindSounds.add(sound);
+    });
+  }
+
+  private onWindGustEnd(): void {
+    console.log('💨 Wind gust ended');
+
+    // Fade out wind sounds
+    this.activeWindSounds.forEach(sound => {
+      // Fade out over 1.5 seconds
+      const fadeOutDuration = 1500;
+      const fadeSteps = 30;
+      const fadeInterval = fadeOutDuration / fadeSteps;
+      const initialVolume = sound.getVolume();
+      const volumeStep = initialVolume / fadeSteps;
+
+      let currentStep = 0;
+      const fadeOut = setInterval(() => {
+        currentStep++;
+        const newVolume = Math.max(0, initialVolume - (volumeStep * currentStep));
+        sound.setVolume(newVolume);
+
+        if (currentStep >= fadeSteps) {
+          clearInterval(fadeOut);
+          sound.setVolume(0); // Ensure it's at 0 but keep playing (looping)
+          this.activeWindSounds.delete(sound);
+          console.log('   Wind audio faded out');
+        }
+      }, fadeInterval);
+    });
   }
 
   public update(deltaTime: number): void {
@@ -499,11 +697,54 @@ export class SceneManager {
     PlayerMovementPostPhysicsSystem(ecsWorld, deltaTime);
     DoorInteractionSystem(ecsWorld, deltaTime);
 
+    // Update tree wind animation
+    if (this.treeManager) {
+      this.treeManager.update(this.camera, deltaTime);
+    }
+
+    // Update wind audio positions to follow player
+    this.updateWindAudioPositions();
+
+    // Update footstep audio
+    this.updateFootsteps(deltaTime);
+
+    // Update flashlight position and target to follow camera
     this.flashlight.position.copy(this.camera.position);
 
     const forward = new THREE.Vector3();
     this.camera.getWorldDirection(forward);
     this.flashlight.target.position.copy(this.camera.position).add(forward);
+  }
+
+  private updateFootsteps(deltaTime: number): void {
+    if (!this.footstepSystem || !this.playerController || !this.inputManager) return;
+
+    const moveSpeed = this.playerController.getMoveSpeed();
+    const isMoving = moveSpeed > 0.1; // Threshold to detect movement
+    const isRunning = this.inputManager.state.sprint && isMoving;
+
+    this.footstepSystem.update(
+      deltaTime,
+      this.playerController.position,
+      isMoving,
+      isRunning
+    );
+  }
+
+  private updateWindAudioPositions(): void {
+    if (this.windAudioSources.length === 0) return;
+
+    const playerPos = this.camera.position;
+    const numSources = this.windAudioSources.length;
+    const windRadius = 15;
+
+    this.windAudioSources.forEach((sound, i) => {
+      const angle = (i / numSources) * Math.PI * 2;
+      const x = playerPos.x + Math.cos(angle) * windRadius;
+      const z = playerPos.z + Math.sin(angle) * windRadius;
+
+      sound.position.set(x, 2, z);
+    });
   }
 
   public render(): void {
@@ -523,6 +764,7 @@ export class SceneManager {
     if (this.treeManager) this.treeManager.dispose();
     if (this.propManager) this.propManager.dispose();
     if (this.bushManager) this.bushManager.dispose();
+    if (this.audioManager) this.audioManager.dispose();
     if (this.physicsWorld) this.physicsWorld.dispose();
   }
 

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BushLoader, BushAsset } from './BushLoader';
 import { BushPlacementSystem } from './Systems/BushPlacementSystem';
 import { PhysicsWorld } from './PhysicsWorld';
+import { FoliagePlacementCoordinator } from './Systems/FoliagePlacementCoordinator';
 
 interface BushInstancedMeshGroup {
   group: THREE.Group;
@@ -23,12 +24,12 @@ export class BushManager {
   private placementSystem: BushPlacementSystem;
   private instancedMeshes: Map<string, BushInstancedMeshGroup> = new Map();
 
-  constructor(scene: THREE.Scene, physicsWorld: PhysicsWorld) {
+  constructor(scene: THREE.Scene, physicsWorld: PhysicsWorld, coordinator?: FoliagePlacementCoordinator) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
 
     this.bushLoader = new BushLoader();
-    this.placementSystem = new BushPlacementSystem();
+    this.placementSystem = new BushPlacementSystem(coordinator);
   }
 
   /**

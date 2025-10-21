@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FoliagePlacementCoordinator } from './FoliagePlacementCoordinator';
 
 export interface BushInstance {
   bushType: string;
@@ -21,6 +22,7 @@ export interface BushPlacementZone {
 export class BushPlacementSystem {
   private instances: Map<string, BushInstance[]> = new Map();
   private placementZones: BushPlacementZone[] = [];
+  private coordinator: FoliagePlacementCoordinator | null = null;
 
   // Reuse exclusion zones from trees/props
   private cabinExclusionRadius = 12;
@@ -28,7 +30,8 @@ export class BushPlacementSystem {
   private pathEnd = new THREE.Vector3(0, 0, 52.425);
   private pathWidth = 3;
 
-  constructor() {
+  constructor(coordinator?: FoliagePlacementCoordinator) {
+    this.coordinator = coordinator || null;
     this.setupDefaultZones();
   }
 
@@ -167,15 +170,32 @@ export class BushPlacementSystem {
         continue;
       }
 
+      // Check against other foliage (coordinator)
+      const bushRadius = 0.4; // Approximate bush radius
+      if (this.coordinator && !this.coordinator.isValidPosition(position, 'bush', bushRadius)) {
+        continue;
+      }
+
       // Valid position found
       // Base scale is 0.15, with 80-120% variation
       const baseScale = 0.15;
-      return {
+      const instance = {
         bushType,
         position,
         rotation: Math.random() * Math.PI * 2,
         scale: baseScale * (0.8 + Math.random() * 0.4) // 12-18% of original size
       };
+
+      // Register with coordinator
+      if (this.coordinator) {
+        this.coordinator.registerObject({
+          type: 'bush',
+          position: position.clone(),
+          radius: bushRadius
+        });
+      }
+
+      return instance;
     }
 
     return null;

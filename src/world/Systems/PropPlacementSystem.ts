@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FoliagePlacementCoordinator } from './FoliagePlacementCoordinator';
 
 export interface PropInstance {
   propType: string;
@@ -21,6 +22,7 @@ export interface PropPlacementZone {
 export class PropPlacementSystem {
   private instances: Map<string, PropInstance[]> = new Map();
   private placementZones: PropPlacementZone[] = [];
+  private coordinator: FoliagePlacementCoordinator | null = null;
 
   // Reuse tree exclusion zones (cabin + path)
   private cabinExclusionRadius = 12;
@@ -28,7 +30,8 @@ export class PropPlacementSystem {
   private pathEnd = new THREE.Vector3(0, 0, 52.425);
   private pathWidth = 3;
 
-  constructor() {
+  constructor(coordinator?: FoliagePlacementCoordinator) {
+    this.coordinator = coordinator || null;
     this.setupDefaultZones();
   }
 
@@ -197,13 +200,30 @@ export class PropPlacementSystem {
         continue;
       }
 
+      // Check against other foliage (coordinator)
+      const rockRadius = 0.3; // Approximate rock radius
+      if (this.coordinator && !this.coordinator.isValidPosition(position, 'rock', rockRadius)) {
+        continue;
+      }
+
       // Valid position found
-      return {
+      const instance = {
         propType,
         position,
         rotation: Math.random() * Math.PI * 2,
         scale: 0.8 + Math.random() * 0.4 // 80-120% scale variation
       };
+
+      // Register with coordinator
+      if (this.coordinator) {
+        this.coordinator.registerObject({
+          type: 'rock',
+          position: position.clone(),
+          radius: rockRadius
+        });
+      }
+
+      return instance;
     }
 
     return null;

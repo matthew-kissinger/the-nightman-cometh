@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FoliagePlacementCoordinator } from './FoliagePlacementCoordinator';
 
 export interface PlacementZone {
   name: string;
@@ -32,8 +33,10 @@ export class TreePlacementSystem {
   private exclusionZones: ExclusionZone[] = [];
   private placementZones: PlacementZone[] = [];
   private instances: Map<string, TreeInstance[]> = new Map();
+  private coordinator: FoliagePlacementCoordinator | null = null;
 
-  constructor() {
+  constructor(coordinator?: FoliagePlacementCoordinator) {
+    this.coordinator = coordinator || null;
     this.setupDefaultZones();
   }
 
@@ -218,15 +221,32 @@ export class TreePlacementSystem {
         continue;
       }
 
+      // Check against other foliage (coordinator)
+      const treeRadius = 0.5; // Approximate tree trunk radius
+      if (this.coordinator && !this.coordinator.isValidPosition(position, 'tree', treeRadius)) {
+        continue;
+      }
+
       // Valid position found
       // Base scale is 0.85, with 90-110% variation
       const baseScale = 0.85;
-      return {
+      const instance = {
         treeType,
         position,
         rotation: Math.random() * Math.PI * 2,
         scale: baseScale * (0.9 + Math.random() * 0.2) // 76.5-93.5% of original size
       };
+
+      // Register with coordinator
+      if (this.coordinator) {
+        this.coordinator.registerObject({
+          type: 'tree',
+          position: position.clone(),
+          radius: treeRadius
+        });
+      }
+
+      return instance;
     }
 
     // Failed to find valid position after max attempts

@@ -3,6 +3,8 @@ import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-
 import { TreeLoader, TreeAsset } from './TreeLoader';
 import { TreePlacementSystem } from './Systems/TreePlacementSystem';
 import { PhysicsWorld } from './PhysicsWorld';
+import { WindSystem } from './Systems/WindSystem';
+import { FoliagePlacementCoordinator } from './Systems/FoliagePlacementCoordinator';
 
 // Extend Three.js BufferGeometry prototype with BVH methods
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
@@ -34,13 +36,15 @@ export class TreeManager {
   private treeLoader: TreeLoader;
   private placementSystem: TreePlacementSystem;
   private instancedMeshes: Map<string, TreeInstancedMeshGroup> = new Map();
+  private windSystem: WindSystem;
 
-  constructor(scene: THREE.Scene, _camera: THREE.Camera, physicsWorld: PhysicsWorld) {
+  constructor(scene: THREE.Scene, _camera: THREE.Camera, physicsWorld: PhysicsWorld, coordinator?: FoliagePlacementCoordinator) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
 
     this.treeLoader = new TreeLoader();
-    this.placementSystem = new TreePlacementSystem();
+    this.placementSystem = new TreePlacementSystem(coordinator);
+    this.windSystem = new WindSystem();
   }
 
   /**
@@ -175,12 +179,24 @@ export class TreeManager {
 
   /**
    * Update tree rendering (called per frame)
-   * Handles distance-based culling beyond fog
+   * Handles wind animation and distance-based culling
    */
-  update(_camera: THREE.Camera): void {
-    // Built-in frustum culling handles most of the work
-    // Three.js automatically culls objects outside the frustum
-    // Fog handles visual fade-out, so no additional culling needed
+  update(_camera: THREE.Camera, deltaTime: number): void {
+    // Update wind simulation
+    this.windSystem.update(deltaTime);
+
+    // Apply wind to all tree instances
+    const allInstances = this.placementSystem.getAllInstances();
+
+    this.instancedMeshes.forEach((meshGroup, treeType) => {
+      const instances = allInstances.get(treeType);
+      if (!instances) return;
+
+      // Apply wind effect to each mesh in the group
+      meshGroup.meshes.forEach(mesh => {
+        this.windSystem.applyWindToInstancedMesh(mesh, instances, 0.08);
+      });
+    });
   }
 
   /**
@@ -188,6 +204,29 @@ export class TreeManager {
    */
   getInstancedMeshes(): Map<string, TreeInstancedMeshGroup> {
     return this.instancedMeshes;
+  }
+
+  /**
+   * Get wind system for audio integration
+   */
+  getWindSystem(): WindSystem {
+    return this.windSystem;
+  }
+
+  /**
+   * Get all tree positions for obstacle avoidance
+   */
+  public getAllTreePositions(): THREE.Vector3[] {
+    const positions: THREE.Vector3[] = [];
+    const allInstances = this.placementSystem.getAllInstances();
+
+    allInstances.forEach((instances) => {
+      instances.forEach(instance => {
+        positions.push(new THREE.Vector3(instance.position.x, 0, instance.position.z));
+      });
+    });
+
+    return positions;
   }
 
   /**

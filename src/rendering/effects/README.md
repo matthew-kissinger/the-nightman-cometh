@@ -1,6 +1,6 @@
 # PSX Horror Post-Processing Effects
 
-Custom shader effects for authentic PlayStation 1 horror aesthetic.
+Custom shader effects for authentic PlayStation 1 horror aesthetic + modern 2025 lighting/fog techniques.
 
 ## Overview
 
@@ -10,6 +10,8 @@ This system recreates the distinctive PSX visual style through:
 - **YUV color space processing** - Perceptually accurate dithering
 - **Chromatic aberration** - Subtle RGB channel separation
 - **Horror color grading** - Desaturated, high-contrast, cool-tinted
+- **Volumetric spotlight** - Visible light cones for atmospheric flashlight (2025)
+- **Depth-based fog** - Enhanced post-processing fog using depth buffer (2025)
 
 ## Effects
 
@@ -192,6 +194,128 @@ vec3 posterize(vec3 color, float levels) {
 - Maxime Heckel: [The Art of Dithering and Retro Shading](https://blog.maximeheckel.com/posts/the-art-of-dithering-and-retro-shading-web/)
 - Codrops: [PSX Jitter Shader Tutorial](https://tympanus.net/codrops/2024/09/03/how-to-create-a-ps1-inspired-jitter-shader-with-react-three-fiber/)
 
+### VolumetricSpotlight (2025)
+
+Creates visible light cones for atmospheric flashlight effect.
+
+```typescript
+const volumetricLight = new VolumetricSpotlight({
+  color: 0xffddaa,        // Light color (matches SpotLight)
+  angle: Math.PI / 7,     // Cone angle (should match SpotLight)
+  distance: 25,           // Cone length (should match SpotLight)
+  opacity: 0.35,          // Overall visibility (0-1)
+  attenuation: 0.04,      // Distance falloff rate
+  anglePower: 2.5,        // Edge softness (higher = sharper)
+  noisiness: 0.4,         // Atmospheric scattering (0-1)
+  segments: 32            // Cone geometry detail
+});
+
+// Sync with spotlight each frame
+volumetricLight.syncWithSpotLight(spotlight);
+volumetricLight.syncWithFog(scene.fog);
+```
+
+**Features:**
+- Distance-based attenuation (fades along beam)
+- Edge-based attenuation (fades at cone edges)
+- 3D noise for atmospheric scattering
+- Fog integration
+- Additive blending for realistic appearance
+
+**Technical Details:**
+- Uses cone geometry with custom shader
+- BackSide rendering for proper blending
+- No depth write (transparent effect)
+- Minimal performance cost (+1 draw call)
+
+### DepthFogEffect (2025)
+
+Post-processing fog using depth buffer for enhanced atmospheric scattering.
+
+```typescript
+const depthFog = new DepthFogEffect({
+  fogColor: new Color(0x050508),  // Fog color
+  fogDensity: 0.4,                // Density for exponential mode
+  fogNear: 0.1,                   // Near distance (linear mode)
+  fogFar: 0.9,                    // Far distance (linear mode)
+  useLinear: false                // Use exponential fog
+});
+```
+
+**Parameters:**
+- `fogColor` - Color to fade towards
+- `fogDensity` - Exponential fog density (0-1)
+- `fogNear/fogFar` - Linear fog range (normalized 0-1)
+- `useLinear` - Use linear instead of exponential
+
+**Advantages:**
+- More accurate than Three.js built-in fog
+- Works in post-processing (after rendering)
+- Can layer with scene fog for enhanced effect
+- Uses existing depth buffer (minimal cost)
+
+**How it works:**
+1. Samples depth buffer
+2. Converts to view-space distance
+3. Calculates exponential fog factor
+4. Mixes scene color with fog color
+
+## 2025 Lighting Best Practices
+
+### Enhanced Flashlight (SpotLight)
+
+Modern parameters based on Three.js community research:
+
+```typescript
+const flashlight = new THREE.SpotLight(
+  0xffddaa,      // Color
+  4.5,           // Intensity (2025: 3-5 for dramatic effect)
+  25,            // Distance
+  Math.PI / 7,   // Angle (~25.7° - focused beam)
+  0.7,           // Penumbra (soft edges)
+  2              // Decay (quadratic - physically accurate)
+);
+
+// Shadow quality (2025 standard)
+flashlight.shadow.mapSize.set(1024, 1024);
+flashlight.shadow.bias = -0.0001; // Prevent shadow acne
+```
+
+**Key Improvements:**
+- **Quadratic decay (2)** - Physically accurate inverse-square falloff
+- **Higher intensity (4.5)** - Cuts through fog, dramatic lighting
+- **Softer penumbra (0.7)** - Realistic soft edges
+- **1024x1024 shadows** - Quality/performance balance
+- **Tighter angle (~25°)** - Focused flashlight beam
+
+### Enhanced Scene Fog
+
+Modern exponential fog for horror atmosphere:
+
+```typescript
+scene.fog = new THREE.FogExp2(
+  0x050508,  // Dark blue-gray (not pure black - adds depth)
+  0.035      // Higher density (claustrophobic feel)
+);
+```
+
+**Improvements:**
+- Color lighter than pure black for depth perception
+- Higher density (0.035 vs 0.02) for atmosphere
+- Exponential falloff for realism
+- Matches background color for seamless fade
+
+## Effect Pipeline Order
+
+Effects are applied in this order (order matters!):
+
+1. **PSXEffect** - Base PSX dithering/posterization
+2. **ColorGradingEffect** - Horror mood adjustment
+3. **DepthFogEffect** - Enhanced atmospheric depth (NEW)
+4. **ChromaticAberrationEffect** - Lens distortion
+5. **NoiseEffect** - Film grain
+6. **VignetteEffect** - Final framing
+
 ## Future Enhancements
 
 Potential additions for Phase 2+:
@@ -199,5 +323,11 @@ Potential additions for Phase 2+:
 - **Vertex Jitter** - Geometry wobble (requires material patching)
 - **Affine Texture Mapping** - Perspective-incorrect UVs (material level)
 - **Screen-space Reflections** - Low-res, dithered reflections
-- **Fog Shader** - Custom PSX-style fog with dithering
 - **CRT Scanlines** - Optional scanline effect
+
+## Research Sources (2025)
+
+- MoldStud: Three.js lighting techniques
+- Higherpass (April 2025): Shadows and fog
+- GitHub: threex.volumetricspotlight, volumetric light examples
+- Three.js Community: Fog hacks and depth-based techniques

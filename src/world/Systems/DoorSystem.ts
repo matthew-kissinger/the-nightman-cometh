@@ -7,6 +7,7 @@ import { PlayerController } from '../PlayerController';
 import { PhysicsWorld } from '../PhysicsWorld';
 import { CameraController } from '../CameraController';
 import { world as ecsWorld } from '../ECS';
+import { AudioManager } from '../../audio/AudioManager';
 
 interface DoorSpawnConfig {
   openAngle: number;
@@ -57,8 +58,13 @@ let dependencies:
       physicsWorld: PhysicsWorld;
       cameraController: CameraController;
       promptElement: HTMLElement | null;
+      audioManager?: AudioManager;
     }
   | null = null;
+
+// Door audio buffers
+let doorOpenBuffer: AudioBuffer | null = null;
+let doorCloseBuffer: AudioBuffer | null = null;
 
 const tempVec = new THREE.Vector3();
 const tempVec2 = new THREE.Vector3();
@@ -76,6 +82,7 @@ export function initDoorSystem(deps: {
   physicsWorld: PhysicsWorld;
   cameraController: CameraController;
   promptElement: HTMLElement | null;
+  audioManager?: AudioManager;
 }): void {
   dependencies = deps;
   if (pendingDoorRegistrations.length > 0) {
@@ -85,6 +92,49 @@ export function initDoorSystem(deps: {
       registerDoorMesh(entry.mesh, entry.overrides);
     }
   }
+
+  // Load door audio
+  if (deps.audioManager) {
+    loadDoorAudio();
+  }
+}
+
+async function loadDoorAudio(): Promise<void> {
+  const loader = new THREE.AudioLoader();
+
+  try {
+    const [openBuf, closeBuf] = await Promise.all([
+      new Promise<AudioBuffer>((resolve, reject) => {
+        loader.load('/assets/audio/qubodup-DoorOpen08.ogg', resolve, undefined, reject);
+      }),
+      new Promise<AudioBuffer>((resolve, reject) => {
+        loader.load('/assets/audio/qubodup-DoorClose08.ogg', resolve, undefined, reject);
+      })
+    ]);
+
+    doorOpenBuffer = openBuf;
+    doorCloseBuffer = closeBuf;
+    console.log('✅ Door sounds loaded');
+  } catch (error) {
+    console.warn('⚠️ Failed to load door sounds', error);
+  }
+}
+
+function playDoorSound(isOpening: boolean): void {
+  if (!dependencies?.audioManager) return;
+
+  const buffer = isOpening ? doorOpenBuffer : doorCloseBuffer;
+  if (!buffer) return;
+
+  const listener = dependencies.audioManager['listener'];
+  const sound = new THREE.Audio(listener);
+  sound.setBuffer(buffer);
+  sound.setVolume(0.6);
+  sound.play();
+
+  sound.onEnded = () => {
+    sound.disconnect();
+  };
 }
 
 export function registerDoorMesh(
@@ -361,6 +411,9 @@ export function DoorSystem(world: IWorld, deltaTime: number): void {
     if (interactPressed && !doorCompLocked) {
       const shouldOpen = doorState < 0.5;
       bestDoor.target = shouldOpen ? 1 : 0;
+
+      // Play door sound
+      playDoorSound(shouldOpen);
     } else if (interactPressed && doorCompLocked) {
       console.log(`🔐 ${bestDoor.label} is locked`);
     }

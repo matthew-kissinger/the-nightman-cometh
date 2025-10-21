@@ -71,8 +71,8 @@ export class InputManager {
 
     // Actions
     this.state.sprint = this.keys.get('ShiftLeft') || this.keys.get('ShiftRight') || false;
-    this.state.crouch = this.keys.get('ControlLeft') || this.keys.get('ControlRight') || false;
-    this.state.jump = this.keys.get('Space') || false;
+    this.state.crouch = this.keys.get('Space') || false;
+    this.state.jump = this.keys.get('ControlLeft') || this.keys.get('ControlRight') || false;
     this.state.interact = this.keys.get('KeyE') || false;
 
     // Check if any movement key is pressed

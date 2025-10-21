@@ -31,10 +31,17 @@
   "lighting": {
     "ambientIntensity": 0.1,
     "ambientColor": "#1a1a2e",
-    "flashlightIntensity": 2.0,
+    "flashlightIntensity": 4.5,
     "flashlightColor": "#ffddaa",
-    "flashlightDistance": 20,
-    "flashlightAngle": 0.523,
-    "flashlightPenumbra": 0.5
+    "flashlightDistance": 25,
+    "flashlightAngle": 0.4488,
+    "flashlightPenumbra": 0.7,
+    "flashlightDecay": 2,
+    "shadowMapSize": 1024
+  },
+  "fog": {
+    "color": "#050508",
+    "density": 0.035,
+    "type": "exponential"
   }
 }

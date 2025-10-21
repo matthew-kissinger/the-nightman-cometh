@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PropLoader, PropAsset } from './PropLoader';
 import { PropPlacementSystem } from './Systems/PropPlacementSystem';
 import { PhysicsWorld } from './PhysicsWorld';
+import { FoliagePlacementCoordinator } from './Systems/FoliagePlacementCoordinator';
 
 interface PropInstancedMeshGroup {
   group: THREE.Group;
@@ -23,12 +24,12 @@ export class PropManager {
   private placementSystem: PropPlacementSystem;
   private instancedMeshes: Map<string, PropInstancedMeshGroup> = new Map();
 
-  constructor(scene: THREE.Scene, physicsWorld: PhysicsWorld) {
+  constructor(scene: THREE.Scene, physicsWorld: PhysicsWorld, coordinator?: FoliagePlacementCoordinator) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
 
     this.propLoader = new PropLoader();
-    this.placementSystem = new PropPlacementSystem();
+    this.placementSystem = new PropPlacementSystem(coordinator);
   }
 
   /**
