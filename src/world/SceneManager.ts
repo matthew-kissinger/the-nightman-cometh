@@ -6,6 +6,7 @@ import { PSXEffect } from '../rendering/effects/PSXEffect';
 import { ChromaticAberrationEffect } from '../rendering/effects/ChromaticAberrationEffect';
 import { ColorGradingEffect } from '../rendering/effects/ColorGradingEffect';
 import { DepthFogEffect } from '../rendering/effects/DepthFogEffect';
+import { VolumetricSpotlight } from '../rendering/effects/VolumetricSpotlight';
 import { PlayerController } from './PlayerController';
 import { CameraController } from './CameraController';
 import { InputManager } from '../utils/InputManager';
@@ -48,6 +49,10 @@ export class SceneManager {
   private footstepSystem!: FootstepSystem;
   private foliageCoordinator!: FoliagePlacementCoordinator;
   private initialized = false;
+  private volumetricFlashlight: VolumetricSpotlight | null = null;
+  private flashlightMesh: THREE.Mesh | null = null;
+  private flashlightEnabled = true;
+  private flashlightBaseIntensity = 1;
 
   // Wind audio
   private windAudioSources: THREE.PositionalAudio[] = [];
@@ -98,13 +103,14 @@ export class SceneManager {
     // - Higher penumbra (0.7) for softer, more atmospheric edges
     // - 1024x1024 shadows (2025 standard compromise between quality and performance)
     this.flashlight = new THREE.SpotLight(
-      0xffddaa,        // Warm color
-      4.5,             // Intensity (2025: 3-5 range for dramatic effect)
-      25,              // Distance (extended for better range)
-      Math.PI / 7,     // Angle (~25.7° - tighter, more focused)
-      0.7,             // Penumbra (softer edges for realism)
-      2                // Decay (quadratic - physically accurate)
+      0xffddaa, // Warm color
+      5.75,     // Brighter beam
+      30,       // Extended reach
+      0.58,     // Slightly wider cone (~33°)
+      0.65,     // Softer edge
+      2         // Quadratic falloff
     );
+    this.flashlightBaseIntensity = this.flashlight.intensity;
     this.flashlight.position.copy(this.camera.position);
     this.flashlight.target.position.set(0, 0, -1);
     this.flashlight.castShadow = true;
@@ -115,6 +121,28 @@ export class SceneManager {
     this.flashlight.shadow.bias = -0.0001; // Prevent shadow acne
     this.scene.add(this.flashlight);
     this.scene.add(this.flashlight.target);
+
+    this.createFlashlightPlaceholder();
+
+    // Volumetric beam for flashlight (visible god rays)
+    const volumetricLight = new VolumetricSpotlight({
+      color: this.flashlight.color,
+      angle: this.flashlight.angle || 0.58,
+      distance: this.flashlight.distance > 0 ? this.flashlight.distance : 30,
+      opacity: 0.65,
+      attenuation: 0.018,
+      anglePower: 2.25,
+      noisiness: 0.42,
+      noiseSpeed: 0.65,
+      intensity: 1.85,
+      widthMultiplier: 1.75,
+      lengthMultiplier: 1.4
+    });
+    volumetricLight.syncWithFog(this.scene.fog);
+    volumetricLight.syncWithSpotLight(this.flashlight);
+    this.scene.add(volumetricLight);
+    this.volumetricFlashlight = volumetricLight;
+    this.setFlashlightEnabled(true);
 
     // Add ambient light (very dim)
     const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.1);
@@ -402,6 +430,97 @@ export class SceneManager {
       .filter(Boolean)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
+  }
+
+  private createFlashlightPlaceholder(): void {
+    if (this.flashlightMesh) {
+      this.camera.remove(this.flashlightMesh);
+      this.disposeFlashlightMesh(this.flashlightMesh);
+      this.flashlightMesh = null;
+    }
+
+    const bodyGeometry = new THREE.CylinderGeometry(0.045, 0.06, 0.26, 16, 1, false);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+      color: 0x222222,
+      metalness: 0.35,
+      roughness: 0.4,
+      emissive: new THREE.Color(0x111111),
+      emissiveIntensity: 0.25
+    });
+    const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    bodyMesh.rotation.x = -Math.PI / 2; // Align along -Z (camera forward)
+    bodyMesh.position.set(0.18, -0.12, -0.35);
+    bodyMesh.castShadow = true;
+    bodyMesh.receiveShadow = false;
+
+    const bezelGeometry = new THREE.RingGeometry(0.045, 0.065, 16);
+    const bezelMaterial = new THREE.MeshStandardMaterial({
+      color: 0x999999,
+      metalness: 0.8,
+      roughness: 0.2
+    });
+    const bezelMesh = new THREE.Mesh(bezelGeometry, bezelMaterial);
+    bezelMesh.position.z = -0.13;
+    bodyMesh.add(bezelMesh);
+
+    const lensGeometry = new THREE.CircleGeometry(0.044, 16);
+    const lensMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffe3b5,
+      transparent: true,
+      opacity: 0.85
+    });
+    const lensMesh = new THREE.Mesh(lensGeometry, lensMaterial);
+    lensMesh.position.z = -0.131;
+    bodyMesh.add(lensMesh);
+
+    bodyMesh.frustumCulled = false;
+
+    this.camera.add(bodyMesh);
+    this.flashlightMesh = bodyMesh;
+  }
+
+  private disposeFlashlightMesh(mesh: THREE.Mesh): void {
+    mesh.traverse(child => {
+      if ((child as THREE.Mesh).isMesh) {
+        const meshChild = child as THREE.Mesh;
+        if (meshChild.geometry) {
+          meshChild.geometry.dispose();
+        }
+        const mat = meshChild.material;
+        if (Array.isArray(mat)) {
+          mat.forEach((m) => m.dispose());
+        } else if (mat) {
+          (mat as THREE.Material).dispose();
+        }
+      }
+    });
+  }
+
+  private setFlashlightEnabled(enabled: boolean): void {
+    this.flashlightEnabled = enabled;
+    this.flashlight.visible = enabled;
+    this.flashlight.intensity = enabled ? this.flashlightBaseIntensity : 0;
+
+    if (this.volumetricFlashlight) {
+      this.volumetricFlashlight.visible = enabled;
+    }
+
+    if (this.flashlightMesh) {
+      const bodyMaterial = this.flashlightMesh.material as THREE.MeshStandardMaterial;
+      bodyMaterial.emissiveIntensity = enabled ? 0.6 : 0.1;
+
+      this.flashlightMesh.children.forEach(child => {
+        if (child instanceof THREE.Mesh) {
+          const mat = child.material;
+          if (Array.isArray(mat)) return;
+          if (mat instanceof THREE.MeshBasicMaterial) {
+            mat.opacity = enabled ? 0.85 : 0.2;
+          } else if (mat instanceof THREE.MeshStandardMaterial) {
+            mat.emissiveIntensity = enabled ? 0.4 : 0.06;
+          }
+        }
+      });
+    }
   }
 
   private async setupGroundPlanes(): Promise<void> {
@@ -692,6 +811,10 @@ export class SceneManager {
   public update(deltaTime: number): void {
     if (!this.initialized) return;
 
+    if (this.inputManager && this.inputManager.consumeFlashlightToggle()) {
+      this.setFlashlightEnabled(!this.flashlightEnabled);
+    }
+
     PlayerMovementPrePhysicsSystem(ecsWorld, deltaTime);
     this.physicsWorld.step(deltaTime);
     PlayerMovementPostPhysicsSystem(ecsWorld, deltaTime);
@@ -714,6 +837,12 @@ export class SceneManager {
     const forward = new THREE.Vector3();
     this.camera.getWorldDirection(forward);
     this.flashlight.target.position.copy(this.camera.position).add(forward);
+
+    if (this.volumetricFlashlight) {
+      this.volumetricFlashlight.syncWithSpotLight(this.flashlight);
+      this.volumetricFlashlight.syncWithFog(this.scene.fog);
+      this.volumetricFlashlight.update(deltaTime);
+    }
   }
 
   private updateFootsteps(deltaTime: number): void {
@@ -766,6 +895,17 @@ export class SceneManager {
     if (this.bushManager) this.bushManager.dispose();
     if (this.audioManager) this.audioManager.dispose();
     if (this.physicsWorld) this.physicsWorld.dispose();
+    if (this.volumetricFlashlight) {
+      this.scene.remove(this.volumetricFlashlight);
+      this.volumetricFlashlight.geometry.dispose();
+      (this.volumetricFlashlight.material as THREE.Material).dispose();
+      this.volumetricFlashlight = null;
+    }
+    if (this.flashlightMesh) {
+      this.camera.remove(this.flashlightMesh);
+      this.disposeFlashlightMesh(this.flashlightMesh);
+      this.flashlightMesh = null;
+    }
   }
 
   private applyPSXAestheticToMesh(mesh: THREE.Mesh): void {

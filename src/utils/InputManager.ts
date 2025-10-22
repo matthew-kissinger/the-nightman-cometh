@@ -15,6 +15,7 @@ export interface InputState {
   crouch: boolean;
   jump: boolean;
   interact: boolean;
+  flashlight: boolean;
 
   // Utility
   isAnyMovementKey: boolean;
@@ -24,6 +25,7 @@ export class InputManager {
   private keys: Map<string, boolean> = new Map();
   public state: InputState;
   private interactPressed = false;
+  private flashlightTogglePressed = false;
 
   constructor() {
     this.state = {
@@ -35,6 +37,7 @@ export class InputManager {
       crouch: false,
       jump: false,
       interact: false,
+      flashlight: false,
       isAnyMovementKey: false
     };
 
@@ -53,6 +56,9 @@ export class InputManager {
     this.keys.set(event.code, true);
     if (event.code === 'KeyE') {
       this.interactPressed = true;
+    }
+    if (event.code === 'KeyF') {
+      this.flashlightTogglePressed = true;
     }
     this.updateState();
   }
@@ -74,6 +80,7 @@ export class InputManager {
     this.state.crouch = this.keys.get('Space') || false;
     this.state.jump = this.keys.get('ControlLeft') || this.keys.get('ControlRight') || false;
     this.state.interact = this.keys.get('KeyE') || false;
+    this.state.flashlight = this.keys.get('KeyF') || false;
 
     // Check if any movement key is pressed
     this.state.isAnyMovementKey =
@@ -120,6 +127,15 @@ export class InputManager {
   public consumeInteractPress(): boolean {
     const wasPressed = this.interactPressed;
     this.interactPressed = false;
+    return wasPressed;
+  }
+
+  /**
+   * Returns true once when the flashlight toggle key (F) is pressed.
+   */
+  public consumeFlashlightToggle(): boolean {
+    const wasPressed = this.flashlightTogglePressed;
+    this.flashlightTogglePressed = false;
     return wasPressed;
   }
 }

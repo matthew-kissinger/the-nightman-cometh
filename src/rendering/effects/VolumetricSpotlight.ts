@@ -37,6 +37,9 @@ const fragmentShader = `
   uniform float noisiness;
   uniform float fogDensity;
   uniform vec3 fogColor;
+  uniform float time;
+  uniform float noiseSpeed;
+  uniform float intensity;
 
   varying vec3 vNormal;
   varying vec3 vWorldPosition;
@@ -74,7 +77,8 @@ const fragmentShader = `
     float angleAttenuation = pow(abs(vNormal.z), anglePower);
 
     // Atmospheric noise (volumetric scattering)
-    vec3 noiseCoord = vWorldPosition * 2.0;
+    vec3 noiseCoord = vWorldPosition * 1.5;
+    noiseCoord += vec3(time * noiseSpeed * 0.4, time * noiseSpeed * 0.6, time * noiseSpeed);
     float n = noise(noiseCoord) * 0.5 + noise(noiseCoord * 2.0) * 0.25;
     float noiseAttenuation = mix(1.0, n, noisiness);
 
@@ -82,7 +86,7 @@ const fragmentShader = `
     float finalAttenuation = distanceAttenuation * angleAttenuation * noiseAttenuation;
 
     // Calculate final alpha with all factors
-    float finalAlpha = finalAttenuation * opacity;
+    float finalAlpha = clamp(finalAttenuation * opacity * (0.5 + intensity * 0.4), 0.0, 1.0);
 
     // Discard fragments with very low alpha to prevent artifacts
     if (finalAlpha < 0.001) {
@@ -91,7 +95,7 @@ const fragmentShader = `
 
     // Apply fog
     float fogFactor = 1.0 - exp(-fogDensity * fogDensity * depth * depth);
-    vec3 finalColor = mix(lightColor, fogColor, fogFactor);
+    vec3 finalColor = mix(lightColor * intensity, fogColor, fogFactor);
 
     gl_FragColor = vec4(finalColor, finalAlpha);
   }
@@ -112,12 +116,27 @@ export interface VolumetricSpotlightOptions {
   anglePower?: number;
   /** Atmospheric noise strength (0-1, default: 0.3) */
   noisiness?: number;
+  /** Speed multiplier for animated noise (default: 0.5) */
+  noiseSpeed?: number;
+  /** Brightness multiplier for beam color (default: 1.0) */
+  intensity?: number;
   /** Cone segments for geometry (default: 32) */
   segments?: number;
+  /** Width multiplier relative to spotlight angle (default: 1.0) */
+  widthMultiplier?: number;
+  /** Length multiplier relative to spotlight distance (default: 1.0) */
+  lengthMultiplier?: number;
 }
 
 export class VolumetricSpotlight extends THREE.Mesh {
   private uniforms!: { [key: string]: THREE.IUniform };
+  private readonly baseDistance: number;
+  private readonly baseRadius: number;
+  private readonly widthMultiplier: number;
+  private readonly lengthMultiplier: number;
+  private readonly noiseSpeed: number;
+  private readonly intensity: number;
+  private elapsedTime = 0;
 
   constructor(options: VolumetricSpotlightOptions = {}) {
     const {
@@ -128,6 +147,8 @@ export class VolumetricSpotlight extends THREE.Mesh {
       attenuation = 0.05,
       anglePower = 3.0,
       noisiness = 0.3,
+      noiseSpeed = 0.5,
+      intensity = 1.0,
       segments = 32
     } = options;
 
@@ -136,11 +157,11 @@ export class VolumetricSpotlight extends THREE.Mesh {
     const radius = Math.tan(angle) * distance;
     const geometry = new THREE.ConeGeometry(radius, distance, segments, 1, true);
 
-    // Rotate cone to point forward (Three.js SpotLight points in -Z)
-    geometry.rotateX(Math.PI);
+    // Move cone so the tip sits at the origin (light position)
+    geometry.translate(0, -distance / 2, 0);
 
-    // Move cone so it starts at origin (light position)
-    geometry.translate(0, 0, -distance / 2);
+    // Rotate cone to point forward (-Z in Three.js spotlight space)
+    geometry.rotateX(-Math.PI / 2);
 
     // Create shader material
     const uniforms = {
@@ -150,7 +171,10 @@ export class VolumetricSpotlight extends THREE.Mesh {
       opacity: { value: opacity },
       noisiness: { value: noisiness },
       fogDensity: { value: 0.02 }, // Will be synced with scene fog
-      fogColor: { value: new THREE.Color(0x000000) }
+      fogColor: { value: new THREE.Color(0x000000) },
+      time: { value: 0 },
+      noiseSpeed: { value: noiseSpeed },
+      intensity: { value: intensity }
     };
 
     const material = new THREE.ShaderMaterial({
@@ -167,6 +191,12 @@ export class VolumetricSpotlight extends THREE.Mesh {
     super(geometry, material);
 
     this.uniforms = uniforms;
+    this.baseDistance = distance;
+    this.baseRadius = radius;
+    this.widthMultiplier = options.widthMultiplier ?? 1.0;
+    this.lengthMultiplier = options.lengthMultiplier ?? 1.0;
+    this.noiseSpeed = noiseSpeed;
+    this.intensity = intensity;
 
     // Don't cast or receive shadows
     this.castShadow = false;
@@ -197,6 +227,16 @@ export class VolumetricSpotlight extends THREE.Mesh {
 
     // Sync color
     this.uniforms?.lightColor?.value?.copy(spotlight.color);
+
+    // Adjust scale to match spotlight distance/angle
+    const effectiveDistance = (spotlight.distance > 0 ? spotlight.distance : this.baseDistance) * this.lengthMultiplier;
+    const spotlightAngle = spotlight.angle > 0 ? spotlight.angle : Math.atan2(this.baseRadius, this.baseDistance);
+    const targetRadius = Math.tan(spotlightAngle) * effectiveDistance * this.widthMultiplier;
+
+    const scaleX = this.baseRadius > 0 ? targetRadius / this.baseRadius : 1;
+    const scaleZ = this.baseDistance > 0 ? effectiveDistance / this.baseDistance : 1;
+
+    this.scale.set(scaleX, scaleX, scaleZ);
   }
 
   /**
@@ -263,5 +303,21 @@ export class VolumetricSpotlight extends THREE.Mesh {
 
   set attenuation(value: number) {
     if (this.uniforms?.attenuation) this.uniforms.attenuation.value = value;
+  }
+
+  /**
+   * Advance animated uniforms
+   */
+  public update(deltaTime: number): void {
+    this.elapsedTime += deltaTime;
+    if (this.uniforms?.time) {
+      this.uniforms.time.value = this.elapsedTime;
+    }
+    if (this.uniforms?.noiseSpeed) {
+      this.uniforms.noiseSpeed.value = this.noiseSpeed;
+    }
+    if (this.uniforms?.intensity) {
+      this.uniforms.intensity.value = this.intensity;
+    }
   }
 }
