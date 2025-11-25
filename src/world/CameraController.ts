@@ -21,6 +21,8 @@ export class CameraController {
   private config: CameraConfig;
   private headBobPhase = 0;
   private isLocked = false;
+  private lastQuat = new THREE.Quaternion();
+  private readonly maxTurnPerFrame = THREE.MathUtils.degToRad(110); // limit abrupt spikes
 
   // Callbacks
   public onLock?: () => void;
@@ -42,6 +44,7 @@ export class CameraController {
     // Set camera FOV
     this.camera.fov = this.config.fov;
     this.camera.updateProjectionMatrix();
+    this.lastQuat.copy(this.camera.quaternion);
 
     // Create PointerLockControls (Three.js r180 requires domElement parameter)
     this.controls = new PointerLockControls(this.camera, domElement);
@@ -87,6 +90,7 @@ export class CameraController {
   ): void {
     // Update camera position (controls handle rotation)
     this.camera.position.copy(targetPosition);
+    this.limitAbruptRotation();
 
     // Apply head bob if enabled and moving
     if (this.config.headBobEnabled && isMoving) {
@@ -149,5 +153,28 @@ export class CameraController {
    */
   public dispose(): void {
     this.controls.dispose();
+  }
+
+  /**
+   * Prevent rare mouse spike events from snapping the view.
+   * Clamps per-frame rotation delta to a reasonable maximum.
+   */
+  private limitAbruptRotation(): void {
+    if (!this.isLocked) {
+      this.lastQuat.copy(this.camera.quaternion);
+      return;
+    }
+
+    const current = this.camera.quaternion;
+    const angle = 2 * Math.acos(
+      Math.max(-1, Math.min(1, this.lastQuat.dot(current)))
+    );
+
+    if (angle > this.maxTurnPerFrame && angle > 0) {
+      const t = this.maxTurnPerFrame / angle;
+      current.slerp(this.lastQuat, 1 - t);
+    }
+
+    this.lastQuat.copy(current);
   }
 }

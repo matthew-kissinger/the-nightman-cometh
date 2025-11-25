@@ -5,7 +5,8 @@ import { SceneManager } from './world/SceneManager';
 // Initialize WebGL renderer
 const renderer = new THREE.WebGLRenderer({
   antialias: false, // PSX-style - no antialiasing
-  powerPreference: 'high-performance'
+  powerPreference: 'high-performance',
+  preserveDrawingBuffer: true // keep buffer so screenshots work
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1)); // PSX-style - low resolution
@@ -19,8 +20,32 @@ if (appElement) {
   appElement.appendChild(renderer.domElement);
 }
 
+function setupScreenshotHotkey(): void {
+  const saveScreenshot = (): void => {
+    const canvas = renderer.domElement;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `nightman-${Date.now()}.png`;
+      link.click();
+      URL.revokeObjectURL(url);
+      console.log('📸 Screenshot saved');
+    }, 'image/png');
+  };
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyP') {
+      e.preventDefault();
+      saveScreenshot();
+    }
+  });
+}
+
 // Initialize scene manager
 const sceneManager = new SceneManager(renderer);
+setupScreenshotHotkey();
 
 // Handle window resize
 window.addEventListener('resize', () => {

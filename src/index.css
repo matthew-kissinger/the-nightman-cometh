@@ -26,6 +26,10 @@ canvas {
   cursor: none;
 }
 
+.ui-cursor canvas {
+  cursor: default;
+}
+
 #interaction-prompt {
   position: fixed;
   bottom: 8%;

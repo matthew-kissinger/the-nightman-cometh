@@ -1,11 +1,10 @@
 /**
- * PlayerController - First-person character controller powered by Rapier's KinematicCharacterController.
+ * PlayerController - Lightweight character controller (no Rapier).
  * Handles input-driven locomotion, stamina, crouch/sprint states, and produces camera-ready position data.
  */
 
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
-import { PhysicsWorld } from './PhysicsWorld';
+import { CollisionWorld } from './CollisionWorld';
 import { InputState } from '../utils/InputManager';
 
 export interface PlayerConfig {
@@ -35,8 +34,6 @@ export interface PlayerConfig {
 }
 
 export class PlayerController {
-  public readonly body: RAPIER.RigidBody;
-  public readonly collider: RAPIER.Collider;
   public readonly position = new THREE.Vector3();
   public readonly velocity = new THREE.Vector3();
 
@@ -44,7 +41,7 @@ export class PlayerController {
   public isCrouching = false;
   public isGrounded = false;
 
-  private readonly physicsWorld: PhysicsWorld;
+  private readonly collisionWorld: CollisionWorld;
   private readonly config: PlayerConfig;
 
   // Movement bookkeeping
@@ -62,21 +59,21 @@ export class PlayerController {
   private verticalVelocity = 0;
   private currentHorizontalSpeed = 0;
 
-  constructor(physicsWorld: PhysicsWorld, config?: Partial<PlayerConfig>) {
-    this.physicsWorld = physicsWorld;
+  constructor(collisionWorld: CollisionWorld, config?: Partial<PlayerConfig>) {
+    this.collisionWorld = collisionWorld;
 
     const defaults: PlayerConfig = {
-      walkSpeed: 12.9,
-      sprintSpeed: 21.0,
-      crouchSpeed: 6.0,
+      walkSpeed: 3.9,
+      sprintSpeed: 8.0,
+      crouchSpeed: 2.6,
       maxFallSpeed: 40,
       groundStickForce: 0.1,
-      acceleration: 36,
-      deceleration: 18,
+      acceleration: 14,
+      deceleration: 10,
       staminaMax: 100,
       sprintDrain: 12,
       sprintRecover: 18,
-      capsuleRadius: 0.2,
+      capsuleRadius: 0.18,
       capsuleHalfHeight: 0.58,
       eyeHeight: 0.52,
       startPosition: new THREE.Vector3(0, 1.0, 0),
@@ -90,36 +87,15 @@ export class PlayerController {
 
     this.stamina = this.config.staminaMax;
 
-    const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-      this.config.startPosition.x,
-      this.config.startPosition.y,
-      this.config.startPosition.z
-    );
-    this.body = physicsWorld.world.createRigidBody(bodyDesc);
+    this.position.copy(this.config.startPosition);
+    this.previousPosition.copy(this.config.startPosition);
 
-    const colliderDesc = RAPIER.ColliderDesc.capsule(
-      this.config.capsuleHalfHeight,
-      this.config.capsuleRadius
-    )
-      .setTranslation(0, 0, 0)
-      .setFriction(0)
-      .setRestitution(0);
-
-    this.collider = physicsWorld.world.createCollider(colliderDesc, this.body);
-
-    const translation = this.body.translation();
-    this.position.set(translation.x, translation.y, translation.z);
-    this.previousPosition.copy(this.position);
-
-    console.log('✅ Player controller created (kinematic body + character controller)');
-    console.log(
-      `   Capsule height: ${(this.config.capsuleHalfHeight * 2 + this.config.capsuleRadius * 2).toFixed(2)}m, radius: ${this.config.capsuleRadius}`
-    );
+    console.log('✅ Player controller created (lightweight collision)');
+    console.log(`   Capsule height: ${(this.config.capsuleHalfHeight * 2 + this.config.capsuleRadius * 2).toFixed(2)}m, radius: ${this.config.capsuleRadius}`);
   }
 
   /**
-   * Pre-physics update: computes the desired translation, resolves it through Rapier's character controller,
-   * and queues the resulting transform on the kinematic rigid body.
+   * Update: computes desired translation and resolves against the collision world.
    */
   public updatePrePhysics(deltaTime: number, input: InputState, camera: THREE.Camera): void {
     if (!Number.isFinite(deltaTime) || deltaTime <= 0) {
@@ -166,50 +142,32 @@ export class PlayerController {
       }
     }
 
-    this.applyVerticalForces(deltaTime, wasGrounded);
-
     this.displacement.copy(this.horizontalVelocity).multiplyScalar(deltaTime);
-    this.displacement.y = this.verticalVelocity * deltaTime;
+    this.displacement.y = 0;
 
-    const desiredTranslation = new RAPIER.Vector3(
-      this.displacement.x,
-      this.displacement.y,
-      this.displacement.z
+    // Resolve collisions (horizontal only)
+    const bottomY = this.config.startPosition.y - this.config.capsuleHalfHeight;
+    const topY = this.config.startPosition.y + this.config.capsuleHalfHeight;
+    const resolvedPosition = this.collisionWorld.resolveHorizontal(
+      this.position,
+      this.displacement,
+      this.config.capsuleRadius,
+      bottomY,
+      topY
     );
 
-    this.physicsWorld.characterController.computeColliderMovement(
-      this.collider,
-      desiredTranslation,
-      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-      undefined,
-      (other: RAPIER.Collider) => other !== this.collider
-    );
+    this.correctedMovement.copy(resolvedPosition).sub(this.position);
+    this.position.copy(resolvedPosition);
 
-    const corrected = this.physicsWorld.characterController.computedMovement();
-    this.correctedMovement.set(corrected.x, corrected.y, corrected.z);
+    // Keep on the nominal ground plane (prevents slow sinking)
+    this.position.y = this.config.startPosition.y;
 
-    const currentPos = this.body.translation();
-    const nextPos = {
-      x: currentPos.x + this.correctedMovement.x,
-      y: currentPos.y + this.correctedMovement.y,
-      z: currentPos.z + this.correctedMovement.z,
-    };
-    this.body.setNextKinematicTranslation(nextPos);
+    this.isGrounded = true;
+    this.verticalVelocity = -this.config.groundStickForce;
 
-    this.isGrounded = this.physicsWorld.characterController.computedGrounded();
-
-    if (this.isGrounded) {
-      this.verticalVelocity = -this.config.groundStickForce;
-    }
-
-    if (deltaTime > 0) {
-      this.currentHorizontalSpeed = Math.sqrt(
-        this.correctedMovement.x * this.correctedMovement.x +
-          this.correctedMovement.z * this.correctedMovement.z
-      ) / deltaTime;
-    } else {
-      this.currentHorizontalSpeed = 0;
-    }
+    this.currentHorizontalSpeed = deltaTime > 0
+      ? this.correctedMovement.length() / deltaTime
+      : 0;
 
     this.isCrouching = input.crouch;
   }
@@ -218,9 +176,6 @@ export class PlayerController {
    * Post-physics update: reads back the simulated rigid body and exposes smoothed velocity values.
    */
   public postPhysics(deltaTime: number): void {
-    const translation = this.body.translation();
-    this.position.set(translation.x, translation.y, translation.z);
-
     if (Number.isFinite(deltaTime) && deltaTime > 0) {
       this.velocity.set(
         (this.position.x - this.previousPosition.x) / deltaTime,
@@ -260,23 +215,6 @@ export class PlayerController {
   }
 
   public dispose(): void {
-    if (this.collider && this.physicsWorld.world) {
-      this.physicsWorld.world.removeCollider(this.collider, true);
-    }
-    if (this.body && this.physicsWorld.world) {
-      this.physicsWorld.world.removeRigidBody(this.body);
-    }
-  }
-
-  private applyVerticalForces(deltaTime: number, wasGrounded: boolean): void {
-    const gravity = this.physicsWorld.getGravity().y; // Negative value.
-
-    if (wasGrounded) {
-      this.verticalVelocity = -this.config.groundStickForce;
-    } else {
-      this.verticalVelocity += gravity * deltaTime;
-      this.verticalVelocity = Math.max(this.verticalVelocity, -this.config.maxFallSpeed);
-    }
   }
 
   private updateStamina(deltaTime: number, input: InputState): void {

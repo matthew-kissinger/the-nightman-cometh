@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { TreeLoader, TreeAsset } from './TreeLoader';
 import { TreePlacementSystem } from './Systems/TreePlacementSystem';
-import { PhysicsWorld } from './PhysicsWorld';
+import { CollisionWorld } from './CollisionWorld';
 import { WindSystem } from './Systems/WindSystem';
 import { FoliagePlacementCoordinator } from './Systems/FoliagePlacementCoordinator';
 
@@ -19,6 +19,14 @@ interface TreeInstancedMeshGroup {
   asset: TreeAsset;
 }
 
+export interface TreeInstanceEntry {
+  meshes: THREE.InstancedMesh[];
+  index: number;
+  position: THREE.Vector3;
+  treeType: string;
+  colliderId?: number;
+}
+
 /**
  * Manages large-scale tree rendering using InstancedMesh for optimal performance
  *
@@ -31,16 +39,18 @@ interface TreeInstancedMeshGroup {
  */
 export class TreeManager {
   private scene: THREE.Scene;
-  private physicsWorld: PhysicsWorld;
+  private collisionWorld: CollisionWorld;
 
   private treeLoader: TreeLoader;
   private placementSystem: TreePlacementSystem;
   private instancedMeshes: Map<string, TreeInstancedMeshGroup> = new Map();
   private windSystem: WindSystem;
+  private instancedEntries: TreeInstanceEntry[] = [];
+  private instancedEntryMap: Map<string, TreeInstanceEntry> = new Map();
 
-  constructor(scene: THREE.Scene, _camera: THREE.Camera, physicsWorld: PhysicsWorld, coordinator?: FoliagePlacementCoordinator) {
+  constructor(scene: THREE.Scene, _camera: THREE.Camera, collisionWorld: CollisionWorld, coordinator?: FoliagePlacementCoordinator) {
     this.scene = scene;
-    this.physicsWorld = physicsWorld;
+    this.collisionWorld = collisionWorld;
 
     this.treeLoader = new TreeLoader();
     this.placementSystem = new TreePlacementSystem(coordinator);
@@ -76,6 +86,7 @@ export class TreeManager {
   private createInstancedMeshes(): void {
     const allInstances = this.placementSystem.getAllInstances();
 
+    this.instancedEntries.length = 0;
     allInstances.forEach((instances, treeType) => {
       const asset = this.treeLoader.getTree(treeType);
       if (!asset || instances.length === 0) return;
@@ -127,6 +138,18 @@ export class TreeManager {
         createdMeshes.push(instancedMesh);
       });
 
+      // Track instances for interaction (use first mesh in the set for position reference)
+      instances.forEach((instance, index) => {
+        const entry: TreeInstanceEntry = {
+          meshes: createdMeshes,
+          index,
+          position: instance.position.clone(),
+          treeType
+        };
+        this.instancedEntries.push(entry);
+        this.instancedEntryMap.set(`${treeType}:${index}`, entry);
+      });
+
       this.scene.add(treeGroup);
       this.instancedMeshes.set(treeType, {
         group: treeGroup,
@@ -139,16 +162,15 @@ export class TreeManager {
   }
 
   /**
-   * Add physics colliders for all trees
-   * Uses cylinder colliders for performance (trimesh would be too expensive for 300+ trees)
+   * Register collision obstacles for all trees (cylinders approximated as circles on XZ)
    */
   private addPhysicsColliders(): void {
-    if (!this.physicsWorld || !this.physicsWorld.isReady()) {
-      console.warn('Physics world not ready, skipping tree colliders');
+    if (!this.collisionWorld) {
+      console.warn('Collision world not ready, skipping tree colliders');
       return;
     }
 
-    console.log('Adding physics colliders for trees...');
+    console.log('Adding collision obstacles for trees...');
     let colliderCount = 0;
 
     const allInstances = this.placementSystem.getAllInstances();
@@ -157,24 +179,21 @@ export class TreeManager {
       const asset = this.treeLoader.getTree(treeType);
       if (!asset) return;
 
-      instances.forEach(instance => {
-        // Create cylinder collider for tree trunk
-        this.physicsWorld.createCylinderCollider(
+      instances.forEach((instance, index) => {
+        const colliderId = this.collisionWorld.addCircle(
+          new THREE.Vector3(instance.position.x, asset.colliderHeight * 0.5, instance.position.z),
           asset.colliderRadius,
-          asset.colliderHeight,
-          {
-            x: instance.position.x,
-            y: asset.colliderHeight / 2, // Center at half height
-            z: instance.position.z
-          },
-          { x: 0, y: 0, z: 0, w: 1 }
+          asset.colliderHeight
         );
-
+        const entry = this.instancedEntryMap.get(`${treeType}:${index}`);
+        if (entry) {
+          entry.colliderId = colliderId;
+        }
         colliderCount++;
       });
     });
 
-    console.log(`✅ Added ${colliderCount} tree physics colliders`);
+    console.log(`✅ Added ${colliderCount} tree collision obstacles`);
   }
 
   /**
@@ -204,6 +223,13 @@ export class TreeManager {
    */
   getInstancedMeshes(): Map<string, TreeInstancedMeshGroup> {
     return this.instancedMeshes;
+  }
+
+  /**
+   * Get flattened list of instanced meshes with their positions (for interactions)
+   */
+  getInstancedEntries(): TreeInstanceEntry[] {
+    return this.instancedEntries;
   }
 
   /**

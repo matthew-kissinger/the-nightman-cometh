@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PropLoader, PropAsset } from './PropLoader';
 import { PropPlacementSystem } from './Systems/PropPlacementSystem';
-import { PhysicsWorld } from './PhysicsWorld';
+import { CollisionWorld } from './CollisionWorld';
 import { FoliagePlacementCoordinator } from './Systems/FoliagePlacementCoordinator';
 
 interface PropInstancedMeshGroup {
@@ -18,15 +18,15 @@ interface PropInstancedMeshGroup {
  */
 export class PropManager {
   private scene: THREE.Scene;
-  private physicsWorld: PhysicsWorld;
+  private collisionWorld: CollisionWorld;
 
   private propLoader: PropLoader;
   private placementSystem: PropPlacementSystem;
   private instancedMeshes: Map<string, PropInstancedMeshGroup> = new Map();
 
-  constructor(scene: THREE.Scene, physicsWorld: PhysicsWorld, coordinator?: FoliagePlacementCoordinator) {
+  constructor(scene: THREE.Scene, collisionWorld: CollisionWorld, coordinator?: FoliagePlacementCoordinator) {
     this.scene = scene;
-    this.physicsWorld = physicsWorld;
+    this.collisionWorld = collisionWorld;
 
     this.propLoader = new PropLoader();
     this.placementSystem = new PropPlacementSystem(coordinator);
@@ -122,12 +122,11 @@ export class PropManager {
   }
 
   /**
-   * Add physics colliders for all props
-   * Uses cylinder colliders for rocks (simple and efficient)
+   * Add collision obstacles for all props (XZ circles)
    */
   private addPhysicsColliders(): void {
-    if (!this.physicsWorld || !this.physicsWorld.isReady()) {
-      console.warn('Physics world not ready, skipping prop colliders');
+    if (!this.collisionWorld) {
+      console.warn('Collision world not ready, skipping prop colliders');
       return;
     }
 
@@ -141,18 +140,11 @@ export class PropManager {
       if (!asset) return;
 
       instances.forEach(instance => {
-        // Create cylinder collider for prop
-        this.physicsWorld.createCylinderCollider(
+        this.collisionWorld.addCircle(
+          new THREE.Vector3(instance.position.x, asset.colliderHeight * 0.5, instance.position.z),
           asset.colliderRadius,
-          asset.colliderHeight,
-          {
-            x: instance.position.x,
-            y: asset.colliderHeight / 2, // Center at half height
-            z: instance.position.z
-          },
-          { x: 0, y: 0, z: 0, w: 1 }
+          asset.colliderHeight
         );
-
         colliderCount++;
       });
     });

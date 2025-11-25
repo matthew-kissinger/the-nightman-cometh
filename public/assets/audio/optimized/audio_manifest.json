@@ -1,0 +1,379 @@
+{
+  "version": "1.0",
+  "files": [
+    {
+      "original": "Dark_ethereal_whoosh_#2-1763683876072.wav",
+      "optimized": "optimized\\transformation\\Dark_ethereal_whoosh_#2-1763683876072.ogg",
+      "category": "transformation",
+      "size_before": 187.576171875,
+      "size_after": 14.0908203125
+    },
+    {
+      "original": "Deep_guttural_monste_#4-1763683426669.wav",
+      "optimized": "optimized\\nightman\\Deep_guttural_monste_#4-1763683426669.ogg",
+      "category": "nightman",
+      "size_before": 187.576171875,
+      "size_after": 11.701171875
+    },
+    {
+      "original": "Door_handle_rattling_#2-1763684186572.wav",
+      "optimized": "optimized\\environment\\Door_handle_rattling_#2-1763684186572.ogg",
+      "category": "environment",
+      "size_before": 187.576171875,
+      "size_after": 12.7431640625
+    },
+    {
+      "original": "Dry_click_of_empty_s_#2-1763683111170.wav",
+      "optimized": "optimized\\combat\\Dry_click_of_empty_s_#2-1763683111170.ogg",
+      "category": "combat",
+      "size_before": 187.576171875,
+      "size_after": 14.62890625
+    },
+    {
+      "original": "Fast_whoosh_sound_of_#3-1763683219815.wav",
+      "optimized": "optimized\\combat\\Fast_whoosh_sound_of_#3-1763683219815.ogg",
+      "category": "combat",
+      "size_before": 375.076171875,
+      "size_after": 21.5693359375
+    },
+    {
+      "original": "Final_massive_bone_r_#3-1763683841953.wav",
+      "optimized": "optimized\\transformation\\Final_massive_bone_r_#3-1763683841953.ogg",
+      "category": "transformation",
+      "size_before": 187.576171875,
+      "size_after": 16.3837890625
+    },
+    {
+      "original": "forest_night_loop.ogg",
+      "optimized": "optimized\\ambient\\forest_night_loop.ogg",
+      "category": "ambient",
+      "size_before": 606.3427734375,
+      "size_after": 551.271484375
+    },
+    {
+      "original": "guttural_demon_hunti_#4-1763683577323.wav",
+      "optimized": "optimized\\nightman\\guttural_demon_hunti_#4-1763683577323.ogg",
+      "category": "nightman",
+      "size_before": 375.076171875,
+      "size_after": 22.1865234375
+    },
+    {
+      "original": "Hammering_nail_into__#3-1763684400437.wav",
+      "optimized": "optimized\\items\\Hammering_nail_into__#3-1763684400437.ogg",
+      "category": "items",
+      "size_before": 375.076171875,
+      "size_after": 20.0107421875
+    },
+    {
+      "original": "Heavy_double-barrel__#2-1763683055686.wav",
+      "optimized": "optimized\\combat\\Heavy_double-barrel__#2-1763683055686.ogg",
+      "category": "combat",
+      "size_before": 187.576171875,
+      "size_after": 13.5791015625
+    },
+    {
+      "original": "Heavy_human-sized_fo_#2-1763683393491.wav",
+      "optimized": "optimized\\nightman\\Heavy_human-sized_fo_#2-1763683393491.ogg",
+      "category": "nightman",
+      "size_before": 375.076171875,
+      "size_after": 18.8115234375
+    },
+    {
+      "original": "Heavy_impact_of_mons_#3-1763683663265.wav",
+      "optimized": "optimized\\nightman\\Heavy_impact_of_mons_#3-1763683663265.ogg",
+      "category": "nightman",
+      "size_before": 187.576171875,
+      "size_after": 14.0634765625
+    },
+    {
+      "original": "Heavy_pounding_on_wo_#4-1763684029508.wav",
+      "optimized": "optimized\\environment\\Heavy_pounding_on_wo_#4-1763684029508.ogg",
+      "category": "environment",
+      "size_before": 375.076171875,
+      "size_after": 19.599609375
+    },
+    {
+      "original": "Light_tapping_on_woo_#2-1763683991424.wav",
+      "optimized": "optimized\\environment\\Light_tapping_on_woo_#2-1763683991424.ogg",
+      "category": "environment",
+      "size_before": 187.576171875,
+      "size_after": 11.693359375
+    },
+    {
+      "original": "Male_death_scream_fa_#4-1763684477796.wav",
+      "optimized": "optimized\\player\\Male_death_scream_fa_#4-1763684477796.ogg",
+      "category": "player",
+      "size_before": 187.576171875,
+      "size_after": 13.8642578125
+    },
+    {
+      "original": "Male_grunt_of_pain,__#2-1763684423615.wav",
+      "optimized": "optimized\\player\\Male_grunt_of_pain,__#2-1763684423615.ogg",
+      "category": "player",
+      "size_before": 90.076171875,
+      "size_after": 9.037109375
+    },
+    {
+      "original": "Male_scream_of_agony_#2-1763684450948.wav",
+      "optimized": "optimized\\player\\Male_scream_of_agony_#2-1763684450948.ogg",
+      "category": "player",
+      "size_before": 187.576171875,
+      "size_after": 13.0615234375
+    },
+    {
+      "original": "Massive_creature_arm_#2-1763683621031.wav",
+      "optimized": "optimized\\nightman\\Massive_creature_arm_#2-1763683621031.ogg",
+      "category": "nightman",
+      "size_before": 187.576171875,
+      "size_after": 11.8603515625
+    },
+    {
+      "original": "Massive_creature_dyi_#2-1763683738671.wav",
+      "optimized": "optimized\\nightman\\Massive_creature_dyi_#2-1763683738671.ogg",
+      "category": "nightman",
+      "size_before": 375.076171875,
+      "size_after": 22.3623046875
+    },
+    {
+      "original": "Massive_creature_foo_#1-1763683353068.wav",
+      "optimized": "optimized\\nightman\\Massive_creature_foo_#1-1763683353068.ogg",
+      "category": "nightman",
+      "size_before": 187.576171875,
+      "size_after": 11.3369140625
+    },
+    {
+      "original": "Massive_impact_on_wo_#1-1763684246255.wav",
+      "optimized": "optimized\\environment\\Massive_impact_on_wo_#1-1763684246255.ogg",
+      "category": "environment",
+      "size_before": 2250.076171875,
+      "size_after": 89.2109375
+    },
+    {
+      "original": "Monster_pain_roar,_a_#2-1763683706293.wav",
+      "optimized": "optimized\\nightman\\Monster_pain_roar,_a_#2-1763683706293.ogg",
+      "category": "nightman",
+      "size_before": 375.076171875,
+      "size_after": 22.7392578125
+    },
+    {
+      "original": "Multiple_bones_break_#3-1763683811146.wav",
+      "optimized": "optimized\\transformation\\Multiple_bones_break_#3-1763683811146.ogg",
+      "category": "transformation",
+      "size_before": 562.576171875,
+      "size_after": 54.6435546875
+    },
+    {
+      "original": "Ominous_low_rumble_w_#4-1763683913346.wav",
+      "optimized": "optimized\\transformation\\Ominous_low_rumble_w_#4-1763683913346.ogg",
+      "category": "transformation",
+      "size_before": 562.576171875,
+      "size_after": 28.78515625
+    },
+    {
+      "original": "pickup_ammo_sound_#1-1763684347169.wav",
+      "optimized": "optimized\\items\\pickup_ammo_sound_#1-1763684347169.ogg",
+      "category": "items",
+      "size_before": 187.576171875,
+      "size_after": 13.271484375
+    },
+    {
+      "original": "qubodup-DoorClose08.ogg",
+      "optimized": "optimized\\environment\\qubodup-DoorClose08.ogg",
+      "category": "environment",
+      "size_before": 15.732421875,
+      "size_after": 11.3134765625
+    },
+    {
+      "original": "qubodup-DoorOpen08.ogg",
+      "optimized": "optimized\\environment\\qubodup-DoorOpen08.ogg",
+      "category": "environment",
+      "size_before": 15.9521484375,
+      "size_after": 11.4423828125
+    },
+    {
+      "original": "Realistic_heartbeat__#1-1763684522415.wav",
+      "optimized": "optimized\\player\\Realistic_heartbeat__#1-1763684522415.ogg",
+      "category": "player",
+      "size_before": 187.576171875,
+      "size_after": 11.220703125
+    },
+    {
+      "original": "Sharp_claws_scratchi_#1-1763684067918.wav",
+      "optimized": "optimized\\environment\\Sharp_claws_scratchi_#1-1763684067918.ogg",
+      "category": "environment",
+      "size_before": 375.076171875,
+      "size_after": 23.203125
+    },
+    {
+      "original": "Shotgun_shell_loadin_#1-1763683158583.wav",
+      "optimized": "optimized\\combat\\Shotgun_shell_loadin_#1-1763683158583.ogg",
+      "category": "combat",
+      "size_before": 375.076171875,
+      "size_after": 28.376953125
+    },
+    {
+      "original": "stepdirt_1.wav",
+      "optimized": "optimized\\ambient\\stepdirt_1.ogg",
+      "category": "ambient",
+      "size_before": 92.123046875,
+      "size_after": 15.716796875
+    },
+    {
+      "original": "stepdirt_2.wav",
+      "optimized": "optimized\\ambient\\stepdirt_2.ogg",
+      "category": "ambient",
+      "size_before": 92.123046875,
+      "size_after": 15.1318359375
+    },
+    {
+      "original": "stepwood_1.wav",
+      "optimized": "optimized\\ambient\\stepwood_1.ogg",
+      "category": "ambient",
+      "size_before": 92.123046875,
+      "size_after": 13.2001953125
+    },
+    {
+      "original": "stepwood_2.wav",
+      "optimized": "optimized\\ambient\\stepwood_2.ogg",
+      "category": "ambient",
+      "size_before": 73.111328125,
+      "size_after": 12.6025390625
+    },
+    {
+      "original": "tree_falls_down_quic_#2-1763683271220.wav",
+      "optimized": "optimized\\items\\tree_falls_down_quic_#2-1763683271220.ogg",
+      "category": "items",
+      "size_before": 187.576171875,
+      "size_after": 12.935546875
+    },
+    {
+      "original": "Wet_bone_snapping_an_#3-1763683777763.wav",
+      "optimized": "optimized\\transformation\\Wet_bone_snapping_an_#3-1763683777763.ogg",
+      "category": "transformation",
+      "size_before": 187.576171875,
+      "size_after": 20.2744140625
+    },
+    {
+      "original": "wind_trees.ogg",
+      "optimized": "optimized\\ambient\\wind_trees.ogg",
+      "category": "ambient",
+      "size_before": 422.1123046875,
+      "size_after": 382.4765625
+    },
+    {
+      "original": "Wood_door_splinterin_#4-1763684274266.wav",
+      "optimized": "optimized\\environment\\Wood_door_splinterin_#4-1763684274266.ogg",
+      "category": "environment",
+      "size_before": 187.576171875,
+      "size_after": 14.2529296875
+    },
+    {
+      "original": "wood_pickup_sound_#2-1763684367832.wav",
+      "optimized": "optimized\\items\\wood_pickup_sound_#2-1763684367832.ogg",
+      "category": "items",
+      "size_before": 375.076171875,
+      "size_after": 20.5380859375
+    },
+    {
+      "original": "wooden_board_shatter_#2-1763684119044.wav",
+      "optimized": "optimized\\environment\\wooden_board_shatter_#2-1763684119044.ogg",
+      "category": "environment",
+      "size_before": 375.076171875,
+      "size_after": 20.3056640625
+    }
+  ],
+  "categories": {
+    "combat": [
+      "shotgun_fire",
+      "shotgun_empty",
+      "shotgun_reload",
+      "hatchet_swing",
+      "hatchet_hit_flesh",
+      "hatchet_miss",
+      "Heavy_double-barrel",
+      "Dry_click_of_empty",
+      "Shotgun_shell_loadin",
+      "Fast_whoosh_sound"
+    ],
+    "nightman": [
+      "nightman_footstep_heavy",
+      "nightman_footstep_light",
+      "nightman_growl_low",
+      "nightman_growl_aggressive",
+      "nightman_attack_swing",
+      "nightman_attack_hit",
+      "nightman_damaged",
+      "nightman_death",
+      "Massive_creature_foo",
+      "Heavy_human-sized_fo",
+      "Deep_guttural_monste",
+      "guttural_demon_hunti",
+      "Massive_creature_arm",
+      "Heavy_impact_of_mons",
+      "Monster_pain_roar",
+      "Massive_creature_dyi"
+    ],
+    "transformation": [
+      "bone_crack_1",
+      "bone_crack_2",
+      "bone_crack_3",
+      "transformation_whoosh",
+      "transformation_complete",
+      "Wet_bone_snapping",
+      "Multiple_bones_break",
+      "Final_massive_bone",
+      "Dark_ethereal_whoosh",
+      "Ominous_low_rumble"
+    ],
+    "environment": [
+      "window_tap_light",
+      "window_tap_heavy",
+      "window_scratch",
+      "window_break",
+      "door_creak",
+      "door_rattle",
+      "door_bang_heavy",
+      "door_splinter",
+      "Light_tapping_on_woo",
+      "Heavy_pounding_on_wo",
+      "Sharp_claws_scratchi",
+      "wooden_board_shatter",
+      "Door_handle_rattling",
+      "Massive_impact_on_wo",
+      "Wood_door_splinterin",
+      "qubodup-DoorClose08",
+      "qubodup-DoorOpen08"
+    ],
+    "items": [
+      "ammo_pickup",
+      "wood_pickup",
+      "board_hammer",
+      "pickup_ammo_sound",
+      "wood_pickup_sound",
+      "Hammering_nail_into",
+      "tree_falls_down"
+    ],
+    "player": [
+      "player_hit_light",
+      "player_hit_heavy",
+      "player_death",
+      "player_heartbeat",
+      "Male_grunt_of_pain",
+      "Male_scream_of_agony",
+      "Male_death_scream",
+      "Realistic_heartbeat"
+    ],
+    "ambient": [
+      "forest_night_loop",
+      "wind_trees",
+      "cabin_ambience",
+      "nightman_roar_distant",
+      "stepdirt_1",
+      "stepdirt_2",
+      "stepwood_1",
+      "stepwood_2"
+    ]
+  },
+  "total_files": 40,
+  "total_size_kb": 1665.4970703125
+}

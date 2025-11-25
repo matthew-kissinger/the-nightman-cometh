@@ -1,13 +1,13 @@
 import { addComponent, addEntity, defineQuery, IWorld } from 'bitecs';
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
 import { Door, Transform } from '../Components';
 import { InputManager } from '../../utils/InputManager';
 import { PlayerController } from '../PlayerController';
-import { PhysicsWorld } from '../PhysicsWorld';
 import { CameraController } from '../CameraController';
 import { world as ecsWorld } from '../ECS';
 import { AudioManager } from '../../audio/AudioManager';
+import { interactionPrompt } from '../../ui/InteractionPrompt';
+import { CollisionWorld } from '../CollisionWorld';
 
 interface DoorSpawnConfig {
   openAngle: number;
@@ -28,13 +28,10 @@ interface DoorRuntime {
   hingeWorld: THREE.Vector3;
   interactionPoint: THREE.Vector3;
   interactionOffsetLocal: THREE.Vector3;
-  colliderOffset: THREE.Vector3;
-  halfExtents: { x: number; y: number; z: number };
-  rigidBody: RAPIER.RigidBody | null;
-  collider: RAPIER.Collider | null;
   target: number;
   speed: number;
   label: string;
+  colliderId?: number;
 }
 
 const DEFAULT_DOOR_CONFIG: DoorSpawnConfig = {
@@ -55,10 +52,10 @@ let dependencies:
       inputManager: InputManager;
       camera: THREE.Camera;
       playerController: PlayerController;
-      physicsWorld: PhysicsWorld;
       cameraController: CameraController;
       promptElement: HTMLElement | null;
       audioManager?: AudioManager;
+      collisionWorld?: CollisionWorld;
     }
   | null = null;
 
@@ -79,12 +76,13 @@ export function initDoorSystem(deps: {
   inputManager: InputManager;
   camera: THREE.Camera;
   playerController: PlayerController;
-  physicsWorld: PhysicsWorld;
   cameraController: CameraController;
   promptElement: HTMLElement | null;
   audioManager?: AudioManager;
+  collisionWorld?: CollisionWorld;
 }): void {
   dependencies = deps;
+  interactionPrompt.attach(deps.promptElement ?? null);
   if (pendingDoorRegistrations.length > 0) {
     const pending = [...pendingDoorRegistrations];
     pendingDoorRegistrations.length = 0;
@@ -151,7 +149,6 @@ export function registerDoorMesh(
   }
 
   const config: DoorSpawnConfig = { ...DEFAULT_DOOR_CONFIG, ...overrides };
-  const { physicsWorld } = dependencies;
 
   mesh.geometry.computeBoundingBox();
   const boundingBox = mesh.geometry.boundingBox;
@@ -257,60 +254,14 @@ export function registerDoorMesh(
     pivot,
     closedQuat,
     openQuat,
-    currentQuat: openQuat.clone(),
-    hingeWorld,
-    interactionPoint: new THREE.Vector3(),
-    interactionOffsetLocal,
-    colliderOffset: localOffset.clone(),
-    halfExtents: {
-      x: size.x * 0.5,
-      y: size.y * 0.5,
-      z: Math.max(size.z * 0.5, 0.05)
-    },
-    rigidBody: null,
-    collider: null,
-    target: 1,
-    speed: config.openSpeed,
-    label: config.interactLabel
-  };
-
-  if (physicsWorld.isReady()) {
-    const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-      hingeWorld.x,
-      hingeWorld.y,
-      hingeWorld.z
-    );
-    const body = physicsWorld.world.createRigidBody(bodyDesc);
-
-    const colliderDesc = RAPIER.ColliderDesc.cuboid(
-      runtime.halfExtents.x,
-      runtime.halfExtents.y,
-      runtime.halfExtents.z
-    )
-      .setTranslation(runtime.colliderOffset.x, runtime.colliderOffset.y, runtime.colliderOffset.z)
-      .setFriction(0.4)
-      .setRestitution(0);
-
-    const collider = physicsWorld.world.createCollider(colliderDesc, body);
-
-    runtime.rigidBody = body;
-    runtime.collider = collider;
-    body.setNextKinematicTranslation({
-      x: hingeWorld.x,
-      y: hingeWorld.y,
-      z: hingeWorld.z
-    });
-    const initialWorldQuat = new THREE.Quaternion();
-    pivot.getWorldQuaternion(initialWorldQuat);
-    body.setNextKinematicRotation({
-      x: initialWorldQuat.x,
-      y: initialWorldQuat.y,
-      z: initialWorldQuat.z,
-      w: initialWorldQuat.w
-    });
-  } else {
-    console.warn('Physics world not ready, skipping door collider creation');
-  }
+  currentQuat: openQuat.clone(),
+  hingeWorld,
+  interactionPoint: new THREE.Vector3(),
+  interactionOffsetLocal,
+  target: 1,
+  speed: config.openSpeed,
+  label: config.interactLabel
+};
 
   mesh.userData.__doorRegistered = true;
   doorInstances.push(runtime);
@@ -321,7 +272,7 @@ export function DoorSystem(world: IWorld, deltaTime: number): void {
     return;
   }
 
-  const { inputManager, camera, playerController, physicsWorld, cameraController } = dependencies;
+  const { inputManager, camera, playerController, cameraController } = dependencies;
 
   const entities = doorQuery(world);
   if (entities.length === 0) {
@@ -330,12 +281,11 @@ export function DoorSystem(world: IWorld, deltaTime: number): void {
   }
 
   if (!cameraController.locked) {
-    inputManager.consumeInteractPress();
     hidePrompt();
     return;
   }
 
-  const interactPressed = inputManager.consumeInteractPress();
+  const interactPressed = inputManager.hasInteractPress();
   const playerPos = playerController.getCameraPosition();
   const cameraForward = camera.getWorldDirection(tempVec);
   if (cameraForward.lengthSq() > 0) {
@@ -409,12 +359,14 @@ export function DoorSystem(world: IWorld, deltaTime: number): void {
     showPrompt(`${action} ${bestDoor.label}`);
 
     if (interactPressed && !doorCompLocked) {
+      inputManager.consumeInteractPress();
       const shouldOpen = doorState < 0.5;
       bestDoor.target = shouldOpen ? 1 : 0;
 
       // Play door sound
       playDoorSound(shouldOpen);
     } else if (interactPressed && doorCompLocked) {
+      inputManager.consumeInteractPress();
       console.log(`🔐 ${bestDoor.label} is locked`);
     }
   }
@@ -448,39 +400,44 @@ export function DoorSystem(world: IWorld, deltaTime: number): void {
     Transform.rotY[door.eid] = euler.y;
     Transform.rotZ[door.eid] = euler.z;
 
-    if (door.rigidBody && physicsWorld.world) {
-      const worldQuat = door.pivot.getWorldQuaternion(tempQuat2);
-      door.rigidBody.setNextKinematicTranslation({ x: hingeWorld.x, y: hingeWorld.y, z: hingeWorld.z });
-      door.rigidBody.setNextKinematicRotation({
-        x: worldQuat.x,
-        y: worldQuat.y,
-        z: worldQuat.z,
-        w: worldQuat.w
-      });
-    }
+    // Update collision so a closed door blocks movement
+    const shouldBlock = next < 0.95;
+    updateDoorCollider(door, shouldBlock);
   }
+}
+
+function updateDoorCollider(door: DoorRuntime, isBlocking: boolean): void {
+  if (!dependencies?.collisionWorld) return;
+
+  // Remove existing collider if we should not block
+  if (!isBlocking) {
+    if (door.colliderId !== undefined) {
+      dependencies.collisionWorld.remove(door.colliderId);
+      door.colliderId = undefined;
+    }
+    return;
+  }
+
+  // Compute world-aligned bounds for the swinging leaf
+  const box = new THREE.Box3().setFromObject(door.mesh);
+  if (box.isEmpty()) {
+    return;
+  }
+
+  // Keep collider tight to the door thickness but not oversized
+  box.expandByScalar(0.02);
+
+  if (door.colliderId !== undefined) {
+    dependencies.collisionWorld.remove(door.colliderId);
+  }
+  door.colliderId = dependencies.collisionWorld.addBox(box);
 }
 
 function showPrompt(text: string): void {
-  if (!dependencies || !dependencies.promptElement) {
-    return;
-  }
-  const { promptElement } = dependencies;
-  if (promptElement.textContent !== text) {
-    promptElement.textContent = text;
-  }
-  if (!promptElement.classList.contains('visible')) {
-    promptElement.classList.add('visible');
-  }
+  if (!dependencies) return;
+  interactionPrompt.show('door', text, dependencies.promptElement ?? null);
 }
 
 function hidePrompt(): void {
-  if (!dependencies || !dependencies.promptElement) {
-    return;
-  }
-  const { promptElement } = dependencies;
-  if (promptElement.classList.contains('visible')) {
-    promptElement.classList.remove('visible');
-  }
-  promptElement.textContent = '';
+  interactionPrompt.hide('door');
 }

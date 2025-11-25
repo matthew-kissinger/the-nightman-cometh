@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EffectComposer, EffectPass, RenderPass, NoiseEffect, VignetteEffect } from 'postprocessing';
-import { PhysicsWorld } from './PhysicsWorld';
+import { CollisionWorld } from './CollisionWorld';
 import { PSXEffect } from '../rendering/effects/PSXEffect';
 import { ChromaticAberrationEffect } from '../rendering/effects/ChromaticAberrationEffect';
 import { ColorGradingEffect } from '../rendering/effects/ColorGradingEffect';
@@ -26,9 +26,19 @@ import {
 import { TreeManager } from './TreeManager';
 import { PropManager } from './PropManager';
 import { BushManager } from './BushManager';
+import { WeaponManager } from './WeaponManager';
 import { AudioManager } from '../audio/AudioManager';
+import { EnhancedAudioManager } from '../audio/EnhancedAudioManager';
 import { FootstepSystem } from './Systems/FootstepSystem';
 import { FoliagePlacementCoordinator } from './Systems/FoliagePlacementCoordinator';
+import { InventorySystem } from './Systems/InventorySystem';
+import { TreeChoppingSystem } from './Systems/TreeChoppingSystem';
+import { FirepitSystem } from './Systems/FirepitSystem';
+import { BoardingSystem } from './Systems/BoardingSystem';
+import { CombatSystem } from './Systems/CombatSystem';
+import { CombatController } from './Systems/CombatController';
+import { GameUI } from '../ui/GameUI';
+import { NightmanEntity } from './NightmanEntity';
 
 export class SceneManager {
   public scene: THREE.Scene;
@@ -38,17 +48,34 @@ export class SceneManager {
   private gltfLoader: GLTFLoader;
 
   // Physics and player systems
-  private physicsWorld!: PhysicsWorld;
+  private collisionWorld!: CollisionWorld;
   private playerController!: PlayerController;
   private cameraController!: CameraController;
   private inputManager!: InputManager;
   private treeManager!: TreeManager;
   private propManager!: PropManager;
   private bushManager!: BushManager;
+  private weaponManager!: WeaponManager;
   private audioManager!: AudioManager;
+  private enhancedAudioManager!: EnhancedAudioManager;
   private footstepSystem!: FootstepSystem;
   private foliageCoordinator!: FoliagePlacementCoordinator;
+
+  // Combat systems
+  private combatSystem!: CombatSystem;
+  private combatController!: CombatController;
+
+  // Survival systems
+  private inventorySystem!: InventorySystem;
+  private treeChoppingSystem!: TreeChoppingSystem;
+  private firepitSystem!: FirepitSystem;
+  private boardingSystem!: BoardingSystem;
+  private gameUI!: GameUI;
+  private nightman: NightmanEntity | null = null;
+  private suppressInstructions = false;
+
   private initialized = false;
+  private treesRegisteredForChopping = false;
   private volumetricFlashlight: VolumetricSpotlight | null = null;
   private flashlightMesh: THREE.Mesh | null = null;
   private flashlightEnabled = true;
@@ -70,6 +97,8 @@ export class SceneManager {
     Geo_Door_Back: { openDirection: -1, hinge: 'min' },
     Geo_Door_Bedroom: { openDirection: 1, hinge: 'min' }
   };
+  private windowAnchorPositions: THREE.Vector3[] = [];
+  private fireMarker: THREE.Vector3 | null = null;
 
   constructor(renderer: THREE.WebGLRenderer) {
 
@@ -283,15 +312,17 @@ export class SceneManager {
   private async initializeSystems(domElement: HTMLElement): Promise<void> {
     console.log('🔧 Initializing player systems...');
 
-    // Create physics world
-    this.physicsWorld = new PhysicsWorld();
-    await this.physicsWorld.init();
-
-    // Create ground plane collision
-    this.physicsWorld.createGroundPlane(50, 50, 0);
+    // Create collision world
+    this.collisionWorld = new CollisionWorld();
 
     // Create input manager
     this.inputManager = new InputManager();
+
+    // Initialize Weapon System (needs input manager) - MUST await before survival systems
+    await this.initializeWeaponSystem();
+
+    // Initialize survival systems (needs input manager AND weapon manager AND combat system)
+    this.initializeSurvivalSystems();
 
     // Create camera controller with PointerLock
     this.cameraController = new CameraController(this.camera, domElement);
@@ -300,6 +331,8 @@ export class SceneManager {
     this.cameraController.onLock = () => {
       const instructions = document.getElementById('instructions');
       if (instructions) instructions.style.display = 'none';
+      this.setCursorVisible(false);
+      this.suppressInstructions = false;
 
       // Resume audio context on user interaction (browser autoplay policy)
       if (this.audioManager && this.audioManager['listener']) {
@@ -313,7 +346,8 @@ export class SceneManager {
     };
     this.cameraController.onUnlock = () => {
       const instructions = document.getElementById('instructions');
-      if (instructions) instructions.style.display = 'flex';
+      if (instructions && !this.suppressInstructions) instructions.style.display = 'flex';
+      this.setCursorVisible(true);
     };
 
     // Add click handler to instructions screen to start game
@@ -325,8 +359,24 @@ export class SceneManager {
       console.log('✅ Click handler attached to instructions screen');
     }
 
+    // Hook inventory UI to pointer lock so crafting can use the cursor
+    if (this.gameUI) {
+      this.gameUI.setInventoryToggleHandlers(
+        () => {
+          this.suppressInstructions = true;
+          this.cameraController.unlock();
+          this.setCursorVisible(true);
+        },
+        () => {
+          this.suppressInstructions = false;
+          this.cameraController.lock();
+          this.setCursorVisible(false);
+        }
+      );
+    }
+
     // Create player controller (starts at cabin center)
-    this.playerController = new PlayerController(this.physicsWorld, {
+    this.playerController = new PlayerController(this.collisionWorld, {
       startPosition: new THREE.Vector3(0, 1.0, 0)
     });
 
@@ -342,10 +392,10 @@ export class SceneManager {
       inputManager: this.inputManager,
       camera: this.camera,
       playerController: this.playerController,
-      physicsWorld: this.physicsWorld,
       cameraController: this.cameraController,
       promptElement: promptElement ?? null,
-      audioManager: this.audioManager
+      audioManager: this.audioManager,
+      collisionWorld: this.collisionWorld
     });
 
     this.initialized = true;
@@ -357,14 +407,129 @@ export class SceneManager {
     this.loadFootstepSounds();
   }
 
+  private processWindowMeshes(meshes: THREE.Mesh[]): void {
+    if (meshes.length === 0) return;
+
+    const groups: THREE.Mesh[][] = [];
+    const THRESHOLD = 1.5; // Meters
+
+    // Grouping logic
+    for (const mesh of meshes) {
+      const center = this.getWindowAnchor(mesh);
+      if (!center) continue;
+
+      let added = false;
+      for (const group of groups) {
+        const groupCenter = this.getWindowAnchor(group[0]);
+        if (groupCenter && center.distanceTo(groupCenter) < THRESHOLD) {
+          group.push(mesh);
+          added = true;
+          break;
+        }
+      }
+      if (!added) groups.push([mesh]);
+    }
+
+    // Process groups
+    for (const group of groups) {
+      if (group.length === 0) continue;
+
+      // 1. Determine rotation from the first mesh
+      const rotation = new THREE.Quaternion();
+      group[0].getWorldQuaternion(rotation);
+
+      // 2. Compute combined OBB in the local space defined by that rotation
+      const inverseRotation = rotation.clone().invert();
+      
+      const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+      const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+
+      for (const mesh of group) {
+        // Get local bounds
+        mesh.updateMatrixWorld(true);
+        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        const localBox = mesh.geometry.boundingBox || new THREE.Box3();
+        
+        if (localBox.isEmpty()) {
+            // Fallback to position if no geometry bounds
+            const pos = new THREE.Vector3();
+            mesh.getWorldPosition(pos);
+            pos.applyQuaternion(inverseRotation);
+            min.min(pos);
+            max.max(pos);
+            continue;
+        }
+
+        const corners = [
+            new THREE.Vector3(localBox.min.x, localBox.min.y, localBox.min.z),
+            new THREE.Vector3(localBox.min.x, localBox.min.y, localBox.max.z),
+            new THREE.Vector3(localBox.min.x, localBox.max.y, localBox.min.z),
+            new THREE.Vector3(localBox.min.x, localBox.max.y, localBox.max.z),
+            new THREE.Vector3(localBox.max.x, localBox.min.y, localBox.min.z),
+            new THREE.Vector3(localBox.max.x, localBox.min.y, localBox.max.z),
+            new THREE.Vector3(localBox.max.x, localBox.max.y, localBox.min.z),
+            new THREE.Vector3(localBox.max.x, localBox.max.y, localBox.max.z)
+        ];
+
+        // Transform local corners to world then to un-rotated space
+        for (const p of corners) {
+            p.applyMatrix4(mesh.matrixWorld); // To World
+            p.applyQuaternion(inverseRotation); // To Un-rotated
+            min.min(p);
+            max.max(p);
+        }
+      }
+
+      const size = new THREE.Vector3().subVectors(max, min);
+      const localCenter = new THREE.Vector3().addVectors(min, max).multiplyScalar(0.5);
+      
+      // Transform center back to world space
+      const worldCenter = localCenter.clone().applyQuaternion(rotation);
+
+      // Use the mesh with the largest volume as the 'target' reference
+      let bestMesh = group[0];
+      let maxVol = -1;
+      for(const m of group){
+          const b = new THREE.Box3().setFromObject(m);
+          const v = (b.max.x-b.min.x)*(b.max.y-b.min.y)*(b.max.z-b.min.z);
+          if(v > maxVol) { maxVol = v; bestMesh = m; }
+      }
+
+      // Check duplicates (using existing global anchor check)
+       if (!this.hasWindowAnchorNearby(worldCenter)) {
+          this.windowAnchorPositions.push(worldCenter.clone());
+          console.log(`🪟 Window registered (group of ${group.length}): ${bestMesh.name} at`, worldCenter);
+          console.log(`   Size: ${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`);
+          
+          if (this.boardingSystem) {
+             this.boardingSystem.registerWindow(bestMesh, {
+                 anchor: worldCenter,
+                 size: size,
+                 rotation: rotation
+             });
+          }
+       }
+    }
+  }
+
   private loadCabinModel(): void {
     this.gltfLoader.load(
       '/assets/models/cabin.glb',
       (gltf) => {
         const cabin = gltf.scene;
+        this.windowAnchorPositions.length = 0;
+        const rawWindowMeshes: THREE.Mesh[] = [];
 
         // Enable shadows and collect meshes
         cabin.traverse((child) => {
+          // Capture fire marker even if it's not a mesh
+          if (child.name === 'marker.fx.fire') {
+            const markerPos = new THREE.Vector3();
+            child.getWorldPosition(markerPos);
+            this.fireMarker = markerPos.clone();
+            console.log('🔥 Found cabin fire marker at', markerPos);
+          }
+
           if (child instanceof THREE.Mesh) {
             this.applyPSXAestheticToMesh(child);
             child.castShadow = true;
@@ -380,20 +545,26 @@ export class SceneManager {
               this.cabinMeshes.push(child);
             }
 
-            if (lowerName.includes('window')) {
-              console.log(`🪟 Window found: ${child.name} at`, child.position);
+            if (this.isWindowMesh(child)) {
+              rawWindowMeshes.push(child);
             }
           }
         });
 
         // Add cabin to scene
         this.scene.add(cabin);
+        
+        // Process grouped window meshes
+        this.processWindowMeshes(rawWindowMeshes);
 
         for (const doorMesh of this.pendingDoorMeshes) {
           registerDoorMesh(doorMesh, {
             interactLabel: this.formatDoorLabel(doorMesh.name),
             ...this.doorOverrides[doorMesh.name]
           });
+
+          // NOTE: Doors NOT registered for boarding - using existing door system instead
+          // Boarding is for windows only
         }
         this.pendingDoorMeshes = [];
 
@@ -402,6 +573,16 @@ export class SceneManager {
 
         // Set cabin bounds for footstep detection
         this.setupCabinFootstepBounds(cabin);
+
+        // Ensure firepit ends up at cabin marker (fallback to fireplace spot if marker missing)
+        if (this.firepitSystem) {
+          if (this.fireMarker) {
+            this.firepitSystem.setPosition(this.fireMarker);
+          } else {
+            // Fallback: center of fireplace from GLB data
+            this.firepitSystem.setPosition(new THREE.Vector3(-1.25, 0.58, -2.18));
+          }
+        }
 
         console.log('✅ Cabin model loaded successfully');
         console.log('   📏 Dimensions: 6.6m wide x 3.8m tall x 7.4m deep');
@@ -430,6 +611,50 @@ export class SceneManager {
       .filter(Boolean)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
+  }
+
+  private isWindowMesh(mesh: THREE.Mesh): boolean {
+    const name = mesh.name;
+    
+    // Strict allowlist based on model analysis
+    const windowParts = [
+        // Front Window
+        'Geo_FrontWindowBase',
+        'Geo_FrontWindowTop',
+        'Geo_FrontWindowJambA',
+        'Geo_FrontWindowJambB',
+        
+        // Left Windows (2 windows)
+        'Geo_LeftJambA_0', 'Geo_LeftJambB_0', // Front-most left window
+        'Geo_LeftJambA_1', 'Geo_LeftJambB_1', // Back-most left window
+        
+        // Right Window
+        'Geo_RightJambA', 'Geo_RightJambB',
+
+        // Back Window (if any, based on analysis 'Geo_BackJambLeft'/'Geo_BackJambRight' exist)
+        'Geo_BackJambLeft', 'Geo_BackJambRight'
+    ];
+
+    return windowParts.includes(name);
+  }
+
+  private getWindowAnchor(mesh: THREE.Mesh): THREE.Vector3 | null {
+    const box = new THREE.Box3().setFromObject(mesh);
+    if (!box.isEmpty()) {
+      return box.getCenter(new THREE.Vector3());
+    }
+    const position = new THREE.Vector3();
+    mesh.getWorldPosition(position);
+    return position;
+  }
+
+  private hasWindowAnchorNearby(position: THREE.Vector3, threshold = 0.6): boolean {
+    return this.windowAnchorPositions.some(anchor => {
+      const dx = anchor.x - position.x;
+      const dz = anchor.z - position.z;
+      const dist = Math.hypot(dx, dz);
+      return dist < threshold;
+    });
   }
 
   private createFlashlightPlaceholder(): void {
@@ -585,78 +810,106 @@ export class SceneManager {
   }
 
   private addCabinPhysics(): void {
-    if (!this.physicsWorld || !this.physicsWorld.isReady()) {
-      console.warn('Physics world not ready, cabin collision skipped');
+    if (!this.collisionWorld) {
+      console.warn('Collision world not ready, cabin collision skipped');
       return;
     }
 
-    // Add trimesh colliders for each cabin mesh
+    let count = 0;
     for (const mesh of this.cabinMeshes) {
-      const geometry = mesh.geometry;
-
-      // Extract vertices
-      const vertices = geometry.getAttribute('position').array as Float32Array;
-
-      // Extract or generate indices
-      let indices: Uint32Array;
-      if (geometry.index) {
-        indices = geometry.index.array as Uint32Array;
-      } else {
-        // Unindexed geometry - generate sequential indices
-        indices = new Uint32Array(vertices.length / 3);
-        for (let i = 0; i < indices.length; i++) {
-          indices[i] = i;
+      const box = new THREE.Box3().setFromObject(mesh);
+      if (!box.isEmpty()) {
+        const height = box.max.y - box.min.y;
+        // Skip flat floor/trim meshes so the player can step up onto the cabin floor
+        if (height < 0.4) {
+          continue;
         }
+        // Slightly shrink XZ to ease doorway clearance without big gaps
+        const margin = 0.05;
+        if ((box.max.x - box.min.x) > margin * 2) {
+          box.min.x += margin;
+          box.max.x -= margin;
+        }
+        if ((box.max.z - box.min.z) > margin * 2) {
+          box.min.z += margin;
+          box.max.z -= margin;
+        }
+        this.collisionWorld.addBox(box);
+        count++;
       }
-
-      // Get world transform
-      const position = new THREE.Vector3();
-      const quaternion = new THREE.Quaternion();
-      const scale = new THREE.Vector3();
-      mesh.getWorldPosition(position);
-      mesh.getWorldQuaternion(quaternion);
-      mesh.getWorldScale(scale);
-
-      // Create trimesh collider (Rapier doesn't support scale on trimesh, must bake into vertices)
-      this.physicsWorld.createTrimeshCollider(
-        vertices,
-        indices,
-        { x: position.x, y: position.y, z: position.z },
-        { x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w }
-      );
     }
 
-    console.log(`✅ Cabin physics collision added (${this.cabinMeshes.length} meshes)`);
+    console.log(`✅ Cabin collision boxes added (${count} meshes)`);
   }
 
   private async initializeTreeSystem(): Promise<void> {
-    // Wait for physics to be ready
-    while (!this.physicsWorld || !this.physicsWorld.isReady()) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
     console.log('🌲 Initializing forest...');
 
     // Create tree manager with foliage coordinator
-    this.treeManager = new TreeManager(this.scene, this.camera, this.physicsWorld, this.foliageCoordinator);
+    this.treeManager = new TreeManager(this.scene, this.camera, this.collisionWorld, this.foliageCoordinator);
 
     // Initialize trees (load models, generate placement, create instances)
     await this.treeManager.initialize();
+
+    // Note: Tree registration for chopping happens in registerTreesForChopping()
+    // which is called after survival systems are initialized
 
     console.log('✅ Forest initialized');
     console.log(`   Trees registered in coordinator: ${this.foliageCoordinator.getCountByType('tree')}`);
   }
 
-  private async initializePropSystem(): Promise<void> {
-    // Wait for physics to be ready
-    while (!this.physicsWorld || !this.physicsWorld.isReady()) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+  /**
+   * Register trees as choppable - must be called AFTER treeChoppingSystem is created
+   * Returns true if registration was successful
+   */
+  private registerTreesForChopping(): boolean {
+    if (this.treesRegisteredForChopping) {
+      return true; // Already done
     }
 
+    if (!this.treeChoppingSystem || !this.treeManager) {
+      // Not ready yet, will retry in update loop
+      return false;
+    }
+
+    const entries = this.treeManager.getInstancedEntries();
+    if (entries.length === 0) {
+      // Trees might still be loading
+      return false;
+    }
+
+    // Sort by distance to player spawn (0,0) so we prioritize nearby trees
+    const origin = new THREE.Vector3(0, 0, 0);
+    entries.sort((a, b) => a.position.distanceToSquared(origin) - b.position.distanceToSquared(origin));
+
+    const maxChoppable = 120;
+    console.log(`🪓 Registering ${Math.min(entries.length, maxChoppable)} nearby trees as choppable...`);
+
+    entries.slice(0, maxChoppable).forEach((entry) => {
+      if (!entry.meshes || entry.meshes.length === 0) {
+        return;
+      }
+      // Use the first mesh in the set as the reference for chopping visuals
+      const firstMesh = entry.meshes[0];
+      this.treeChoppingSystem.registerTree(
+        firstMesh,
+        entry.position,
+        entry.index,
+        entry.meshes,
+        entry.colliderId
+      );
+    });
+
+    console.log(`✅ ${Math.min(entries.length, maxChoppable)} trees registered for chopping`);
+    this.treesRegisteredForChopping = true;
+    return true;
+  }
+
+  private async initializePropSystem(): Promise<void> {
     console.log('🪨 Initializing environmental props...');
 
     // Create prop manager with foliage coordinator
-    this.propManager = new PropManager(this.scene, this.physicsWorld, this.foliageCoordinator);
+    this.propManager = new PropManager(this.scene, this.collisionWorld, this.foliageCoordinator);
 
     // Initialize props (load models, generate placement, create instances)
     await this.propManager.initialize();
@@ -666,15 +919,10 @@ export class SceneManager {
   }
 
   private async initializeBushSystem(): Promise<void> {
-    // Wait for physics to be ready
-    while (!this.physicsWorld || !this.physicsWorld.isReady()) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
     console.log('🌿 Initializing bushes...');
 
     // Create bush manager with foliage coordinator
-    this.bushManager = new BushManager(this.scene, this.physicsWorld, this.foliageCoordinator);
+    this.bushManager = new BushManager(this.scene, this.collisionWorld, this.foliageCoordinator);
 
     // Initialize bushes (load models, generate placement, create instances)
     await this.bushManager.initialize();
@@ -683,14 +931,134 @@ export class SceneManager {
     console.log(`   Bushes registered in coordinator: ${this.foliageCoordinator.getCountByType('bush')}`);
   }
 
+  private async initializeWeaponSystem(): Promise<void> {
+    console.log('🔫 Initializing Weapon System...');
+    this.weaponManager = new WeaponManager(this.scene, this.camera, this.inputManager);
+    await this.weaponManager.loadWeapons();
+
+    // Initialize Enhanced Audio Manager (replaces old AudioManager for new features)
+    console.log('🔊 Initializing Enhanced Audio System...');
+    this.enhancedAudioManager = new EnhancedAudioManager(this.camera);
+
+    // Initialize Combat System
+    console.log('⚔️ Initializing Combat System...');
+    this.combatSystem = new CombatSystem();
+
+    // Initialize Combat Controller (wires inputs → weapons → combat)
+    this.combatController = new CombatController(
+      this.camera,
+      this.scene,
+      this.inputManager,
+      this.weaponManager,
+      this.combatSystem
+    );
+
+    // Hook up audio callback
+    this.combatController.onPlaySound = (soundKey: string, position?: THREE.Vector3) => {
+      if (position) {
+        this.enhancedAudioManager.play3D(soundKey, position, { volume: 0.8 });
+      } else {
+        this.enhancedAudioManager.play2D(soundKey, { volume: 0.8 });
+      }
+    };
+
+    console.log('✅ Weapon and Combat systems ready');
+  }
+
+  private initializeSurvivalSystems(): void {
+    console.log('🏕️ Initializing survival systems...');
+
+    // Create inventory system
+    this.inventorySystem = new InventorySystem();
+
+    // Create GameUI (depends on inventory)
+    this.gameUI = new GameUI(this.inventorySystem);
+
+    // Sync CombatSystem ammo with InventorySystem/UI
+    this.combatSystem.onAmmoChanged = (current: number) => {
+      // Update InventorySystem shells to match CombatSystem
+      const inv = this.inventorySystem.getInventory();
+      const diff = current - inv.shells;
+      if (diff > 0) {
+        this.inventorySystem.addShells(diff);
+      } else if (diff < 0) {
+        // Remove shells (fired)
+        for (let i = 0; i < Math.abs(diff); i++) {
+          this.inventorySystem.useShell();
+        }
+      }
+      this.gameUI.update();
+    };
+
+    // Create tree chopping system (will be connected to TreeManager later)
+    this.treeChoppingSystem = new TreeChoppingSystem(
+      this.scene,
+      this.camera,
+      this.inputManager,
+      this.weaponManager,
+      this.collisionWorld
+    );
+
+    // Wire up tree chopping audio
+    this.treeChoppingSystem.onPlaySound = (key, position) => {
+      if (this.enhancedAudioManager && position) {
+        this.enhancedAudioManager.play3D(key, position, { volume: 0.8 });
+      }
+    };
+
+    // Create firepit system (position: near cabin front door)
+    const firepitPosition = new THREE.Vector3(2, 0, 4); // 2m to the right of front door
+    this.firepitSystem = new FirepitSystem(
+      this.scene,
+      this.camera,
+      this.inputManager,
+      this.inventorySystem,
+      firepitPosition
+    );
+
+    // Create boarding system
+    this.boardingSystem = new BoardingSystem(
+      this.scene,
+      this.camera,
+      this.inputManager,
+      this.inventorySystem
+    );
+
+    // Now that treeChoppingSystem exists, register trees for chopping
+    // (TreeManager may not be ready yet if tree loading is still in progress)
+    this.registerTreesForChopping();
+
+    // Initialize Nightman (lurking around cabin for vibe assessment)
+    this.initializeNightman();
+
+    console.log('✅ Survival systems initialized');
+  }
+
+  private async initializeNightman(): Promise<void> {
+    try {
+      this.nightman = new NightmanEntity(this.scene);
+      await this.nightman.initialize();
+      console.log('👹 Nightman is stalking...');
+    } catch (error) {
+      console.warn('⚠️ Failed to initialize Nightman:', error);
+    }
+  }
+
   private async loadAmbientAudio(): Promise<void> {
     try {
       console.log('🔊 Loading ambient forest audio...');
-      await this.audioManager.loadAmbient('/assets/audio/forest_night_loop.ogg', 0.6);
-      console.log('✅ Ambient audio loaded and playing at volume 0.6');
 
-      // Setup wind audio triggers
-      this.setupWindAudio();
+      // Use old audio manager for now (if it exists)
+      if (this.audioManager) {
+        await this.audioManager.loadAmbient('/assets/audio/forest_night_loop.ogg', 0.6);
+        this.setupWindAudio();
+      }
+
+      // Also start ambient loop with new enhanced audio manager
+      if (this.enhancedAudioManager) {
+        this.enhancedAudioManager.startAmbientLoop();
+        console.log('✅ Enhanced ambient audio started');
+      }
     } catch (error) {
       console.warn('⚠️ Failed to load ambient audio', error);
     }
@@ -816,13 +1184,63 @@ export class SceneManager {
     }
 
     PlayerMovementPrePhysicsSystem(ecsWorld, deltaTime);
-    this.physicsWorld.step(deltaTime);
     PlayerMovementPostPhysicsSystem(ecsWorld, deltaTime);
     DoorInteractionSystem(ecsWorld, deltaTime);
 
     // Update tree wind animation
     if (this.treeManager) {
       this.treeManager.update(this.camera, deltaTime);
+    }
+
+    // Update Weapons
+    if (this.weaponManager && this.inputManager) {
+      this.weaponManager.update(deltaTime);
+
+      // Update UI with current weapon
+      if (this.gameUI) {
+        this.gameUI.setCurrentWeapon(this.weaponManager.getCurrentWeapon());
+      }
+    }
+
+    // Update Combat Controller (handles weapon inputs → combat actions)
+    if (this.combatController) {
+      this.combatController.update(deltaTime);
+    }
+
+    // Update Nightman (stalking behavior)
+    if (this.nightman && this.playerController) {
+      this.nightman.update(deltaTime, this.playerController.position);
+    }
+
+    // Try to register trees for chopping if not done yet (deferred registration)
+    if (!this.treesRegisteredForChopping) {
+      this.registerTreesForChopping();
+    }
+
+    // Update survival systems
+    if (this.treeChoppingSystem) {
+      this.treeChoppingSystem.update(deltaTime);
+
+      // Check for wood pickup
+      this.treeChoppingSystem.checkWoodPickup(this.playerController.position, (amount) => {
+        this.inventorySystem.addWood(amount);
+        this.gameUI.update();
+      });
+    }
+
+    if (this.firepitSystem) {
+      this.firepitSystem.update(deltaTime, this.playerController.position);
+    }
+
+    if (this.boardingSystem) {
+      this.boardingSystem.update(deltaTime);
+    }
+
+    // Update UI with player stats
+    if (this.gameUI && this.playerController) {
+      // TODO: Get actual stamina from player entity
+      this.gameUI.setPlayerStamina(100); // Placeholder
+      this.gameUI.update();
     }
 
     // Update wind audio positions to follow player
@@ -878,12 +1296,27 @@ export class SceneManager {
 
   public render(): void {
     this.composer.render();
+    if (this.weaponManager) {
+      const renderer = (this.composer as any).renderer || (this.composer as any)._renderer;
+      this.weaponManager.render(renderer);
+    }
   }
 
   public onResize(width: number, height: number): void {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.updateComposerResolution(width, height);
+    if (this.weaponManager) {
+        this.weaponManager.onResize(width, height);
+    }
+  }
+
+  private setCursorVisible(visible: boolean): void {
+    if (visible) {
+      document.body.classList.add('ui-cursor');
+    } else {
+      document.body.classList.remove('ui-cursor');
+    }
   }
 
   public dispose(): void {
@@ -894,7 +1327,15 @@ export class SceneManager {
     if (this.propManager) this.propManager.dispose();
     if (this.bushManager) this.bushManager.dispose();
     if (this.audioManager) this.audioManager.dispose();
-    if (this.physicsWorld) this.physicsWorld.dispose();
+
+    // Dispose survival systems
+    if (this.inventorySystem) this.inventorySystem.dispose();
+    if (this.treeChoppingSystem) this.treeChoppingSystem.dispose();
+    if (this.firepitSystem) this.firepitSystem.dispose();
+    if (this.boardingSystem) this.boardingSystem.dispose();
+    if (this.gameUI) this.gameUI.dispose();
+    if (this.nightman) this.nightman.dispose();
+
     if (this.volumetricFlashlight) {
       this.scene.remove(this.volumetricFlashlight);
       this.volumetricFlashlight.geometry.dispose();

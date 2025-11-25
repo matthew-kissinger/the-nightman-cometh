@@ -67,7 +67,10 @@
       "Bash(npm install:*)",
       "WebFetch(domain:mugen87.github.io)",
       "Bash(cat:*)",
-      "Bash(xargs basename:*)"
+      "Bash(xargs basename:*)",
+      "Bash(dir /s /b src*.ts 2)",
+      "Bash(nul)",
+      "Bash(dir /b /s srcworldSystems*.ts 2)"
     ],
     "deny": [],
     "ask": []

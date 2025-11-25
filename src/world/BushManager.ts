@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BushLoader, BushAsset } from './BushLoader';
 import { BushPlacementSystem } from './Systems/BushPlacementSystem';
-import { PhysicsWorld } from './PhysicsWorld';
+import { CollisionWorld } from './CollisionWorld';
 import { FoliagePlacementCoordinator } from './Systems/FoliagePlacementCoordinator';
 
 interface BushInstancedMeshGroup {
@@ -18,15 +18,15 @@ interface BushInstancedMeshGroup {
  */
 export class BushManager {
   private scene: THREE.Scene;
-  private physicsWorld: PhysicsWorld;
+  private collisionWorld: CollisionWorld;
 
   private bushLoader: BushLoader;
   private placementSystem: BushPlacementSystem;
   private instancedMeshes: Map<string, BushInstancedMeshGroup> = new Map();
 
-  constructor(scene: THREE.Scene, physicsWorld: PhysicsWorld, coordinator?: FoliagePlacementCoordinator) {
+  constructor(scene: THREE.Scene, collisionWorld: CollisionWorld, coordinator?: FoliagePlacementCoordinator) {
     this.scene = scene;
-    this.physicsWorld = physicsWorld;
+    this.collisionWorld = collisionWorld;
 
     this.bushLoader = new BushLoader();
     this.placementSystem = new BushPlacementSystem(coordinator);
@@ -122,12 +122,11 @@ export class BushManager {
   }
 
   /**
-   * Add physics colliders for all bushes
-   * Uses cylinder colliders (simple and efficient for bushes)
+   * Add collision obstacles for all bushes
    */
   private addPhysicsColliders(): void {
-    if (!this.physicsWorld || !this.physicsWorld.isReady()) {
-      console.warn('Physics world not ready, skipping bush colliders');
+    if (!this.collisionWorld) {
+      console.warn('Collision world not ready, skipping bush colliders');
       return;
     }
 
@@ -141,18 +140,11 @@ export class BushManager {
       if (!asset) return;
 
       instances.forEach(instance => {
-        // Create cylinder collider for bush
-        this.physicsWorld.createCylinderCollider(
+        this.collisionWorld.addCircle(
+          new THREE.Vector3(instance.position.x, asset.colliderHeight * 0.5, instance.position.z),
           asset.colliderRadius,
-          asset.colliderHeight,
-          {
-            x: instance.position.x,
-            y: asset.colliderHeight / 2, // Center at half height
-            z: instance.position.z
-          },
-          { x: 0, y: 0, z: 0, w: 1 }
+          asset.colliderHeight
         );
-
         colliderCount++;
       });
     });
