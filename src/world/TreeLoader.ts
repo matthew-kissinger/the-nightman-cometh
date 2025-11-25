@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assetPath } from '../utils/assetPath';
 
 export interface TreeMeshAsset {
   geometry: THREE.BufferGeometry;
@@ -125,13 +126,13 @@ export class TreeLoader {
    * Load all tree models from config
    */
   async loadAllTrees(): Promise<Map<string, TreeAsset>> {
-    const response = await fetch('/assets/models/trees/trees.json');
+    const response = await fetch(assetPath('assets/models/trees/trees.json'));
     const config = await response.json();
 
     const treeNames = Object.keys(config.trees);
     const promises = treeNames.map(name => {
       const treeConfig = config.trees[name];
-      const path = `/assets/models/trees/${treeConfig.file}`;
+      const path = assetPath(`assets/models/trees/${treeConfig.file}`);
       return this.loadTree(name, path, treeConfig);
     });
 

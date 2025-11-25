@@ -8,6 +8,7 @@ import { world as ecsWorld } from '../ECS';
 import { AudioManager } from '../../audio/AudioManager';
 import { interactionPrompt } from '../../ui/InteractionPrompt';
 import { CollisionWorld } from '../CollisionWorld';
+import { assetPath } from '../../utils/assetPath';
 
 interface DoorSpawnConfig {
   openAngle: number;
@@ -103,10 +104,10 @@ async function loadDoorAudio(): Promise<void> {
   try {
     const [openBuf, closeBuf] = await Promise.all([
       new Promise<AudioBuffer>((resolve, reject) => {
-        loader.load('/assets/audio/qubodup-DoorOpen08.ogg', resolve, undefined, reject);
+        loader.load(assetPath('assets/audio/optimized/environment/qubodup-DoorOpen08.ogg'), resolve, undefined, reject);
       }),
       new Promise<AudioBuffer>((resolve, reject) => {
-        loader.load('/assets/audio/qubodup-DoorClose08.ogg', resolve, undefined, reject);
+        loader.load(assetPath('assets/audio/optimized/environment/qubodup-DoorClose08.ogg'), resolve, undefined, reject);
       })
     ]);
 

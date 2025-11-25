@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assetPath } from '../utils/assetPath';
 
 export interface BushMeshAsset {
   geometry: THREE.BufferGeometry;
@@ -51,7 +52,7 @@ export class BushLoader {
   private async loadBush(bushName: string): Promise<void> {
     return new Promise((resolve, reject) => {
       this.loader.load(
-        `/assets/models/bushes/${bushName}.glb`,
+        assetPath(`assets/models/bushes/${bushName}.glb`),
         (gltf) => {
           const scene = gltf.scene;
           const meshes: BushMeshAsset[] = [];

@@ -3,6 +3,8 @@
  * Using properly encoded OGG files with libvorbis
  */
 
+import { assetPath } from '../utils/assetPath';
+
 export type AudioCategory = 'combat' | 'nightman' | 'transformation' |
                             'environment' | 'items' | 'player' | 'ambient';
 
@@ -194,7 +196,9 @@ export function getAudioPath(key: string): string {
     console.warn(`Audio file not found: ${key}`);
     return '';
   }
-  return audio.path;
+  // Remove leading slash and use assetPath for proper base URL handling
+  const path = audio.path.startsWith('/') ? audio.path.slice(1) : audio.path;
+  return assetPath(path);
 }
 
 export function getAudiosByCategory(category: AudioCategory): AudioFile[] {

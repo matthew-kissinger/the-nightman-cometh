@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assetPath } from '../utils/assetPath';
 
 export interface PropMeshAsset {
   geometry: THREE.BufferGeometry;
@@ -32,7 +33,7 @@ export class PropLoader {
   async loadRocks(): Promise<Map<string, PropAsset>> {
     return new Promise((resolve, reject) => {
       this.loader.load(
-        '/assets/models/props/rocks.glb',
+        assetPath('assets/models/props/rocks.glb'),
         (gltf) => {
           const scene = gltf.scene;
           const rockVariations: Map<string, PropAsset> = new Map();

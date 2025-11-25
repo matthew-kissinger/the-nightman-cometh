@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { InputManager } from '../utils/InputManager';
+import { assetPath } from '../utils/assetPath';
 
 // Weapon types
 export type WeaponType = 'none' | 'flashlight' | 'hatchet' | 'shotgun';
@@ -67,21 +68,21 @@ export class WeaponManager {
     console.log('🔫 Loading weapons...');
     
     // Load Flashlight
-    await this.loadModel('flashlight', '/assets/models/weapons/flashlight.glb', {
+    await this.loadModel('flashlight', assetPath('assets/models/weapons/flashlight.glb'), {
       pos: new THREE.Vector3(-0.2, -0.3, -0.5), // Left hand
       rot: new THREE.Euler(0, Math.PI, 0),
       scale: 1.0
     });
 
     // Load Hatchet
-    await this.loadModel('hatchet', '/assets/models/weapons/hatchet.glb', {
+    await this.loadModel('hatchet', assetPath('assets/models/weapons/hatchet.glb'), {
       pos: new THREE.Vector3(0.3, -0.4, -0.6), // Right hand
       rot: new THREE.Euler(0, Math.PI, 0.2), // Blade facing forward (was PI/2, rotated 90 more)
       scale: 1.0
     });
 
     // Load Shotgun
-    await this.loadModel('shotgun', '/assets/models/weapons/shotgun.glb', {
+    await this.loadModel('shotgun', assetPath('assets/models/weapons/shotgun.glb'), {
       pos: new THREE.Vector3(0.25, -0.35, -0.7), // Right hand
       rot: new THREE.Euler(0, Math.PI, 0), // Facing forward
       scale: 1.0

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assetPath } from '../utils/assetPath';
 
 /**
  * NightmanEntity - Stalking creature with basic behavior
@@ -62,7 +63,7 @@ export class NightmanEntity {
 
     return new Promise((resolve, reject) => {
       loader.load(
-        '/assets/models/creatures/nightman.glb',
+        assetPath('assets/models/creatures/nightman.glb'),
         (gltf) => {
           this.model = gltf.scene;
           this.model.scale.setScalar(this.modelScale);

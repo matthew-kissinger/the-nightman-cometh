@@ -11,6 +11,7 @@ import { PlayerController } from './PlayerController';
 import { CameraController } from './CameraController';
 import { InputManager } from '../utils/InputManager';
 import { loadTexture } from '../utils/loaders';
+import { assetPath } from '../utils/assetPath';
 import { world as ecsWorld } from './ECS';
 import {
   initPlayerMovementSystem,
@@ -514,7 +515,7 @@ export class SceneManager {
 
   private loadCabinModel(): void {
     this.gltfLoader.load(
-      '/assets/models/cabin.glb',
+      assetPath('assets/models/cabin.glb'),
       (gltf) => {
         const cabin = gltf.scene;
         this.windowAnchorPositions.length = 0;
@@ -751,8 +752,8 @@ export class SceneManager {
   private async setupGroundPlanes(): Promise<void> {
     try {
       // Load textures
-      const grassTexture = await loadTexture('/assets/textures/ground/grass001.png');
-      const dirtTexture = await loadTexture('/assets/textures/ground/ground015.png');
+      const grassTexture = await loadTexture(assetPath('assets/textures/ground/grass001.png'));
+      const dirtTexture = await loadTexture(assetPath('assets/textures/ground/ground015.png'));
 
       // Configure textures for PSX aesthetic
       [grassTexture, dirtTexture].forEach(texture => {
@@ -1050,7 +1051,7 @@ export class SceneManager {
 
       // Use old audio manager for now (if it exists)
       if (this.audioManager) {
-        await this.audioManager.loadAmbient('/assets/audio/forest_night_loop.ogg', 0.6);
+        await this.audioManager.loadAmbient(assetPath('assets/audio/optimized/ambient/forest_night_loop.ogg'), 0.6);
         this.setupWindAudio();
       }
 
@@ -1103,7 +1104,7 @@ export class SceneManager {
       try {
         const windSound = await this.audioManager.play3D(
           `wind_${i}`,
-          '/assets/audio/wind_trees.ogg',
+          assetPath('assets/audio/optimized/ambient/wind_trees.ogg'),
           new THREE.Vector3(x, 2, z),
           0.0, // Start at 0 volume
           12.0, // Reference distance
