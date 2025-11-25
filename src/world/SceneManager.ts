@@ -101,6 +101,16 @@ export class SceneManager {
   private windowAnchorPositions: THREE.Vector3[] = [];
   private fireMarker: THREE.Vector3 | null = null;
 
+  // Deferred registration for systems not yet initialized
+  private pendingWindowRegistrations: Array<{
+    mesh: THREE.Mesh;
+    anchor: THREE.Vector3;
+    size: THREE.Vector3;
+    rotation: THREE.Quaternion;
+  }> = [];
+  private windowsRegisteredForBoarding = false;
+  private firepitPositionSet = false;
+
   constructor(renderer: THREE.WebGLRenderer) {
 
     // Initialize scene
@@ -501,14 +511,14 @@ export class SceneManager {
           this.windowAnchorPositions.push(worldCenter.clone());
           console.log(`🪟 Window registered (group of ${group.length}): ${bestMesh.name} at`, worldCenter);
           console.log(`   Size: ${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`);
-          
-          if (this.boardingSystem) {
-             this.boardingSystem.registerWindow(bestMesh, {
-                 anchor: worldCenter,
-                 size: size,
-                 rotation: rotation
-             });
-          }
+
+          // Store for deferred registration (boardingSystem may not exist yet)
+          this.pendingWindowRegistrations.push({
+            mesh: bestMesh,
+            anchor: worldCenter.clone(),
+            size: size.clone(),
+            rotation: rotation.clone()
+          });
        }
     }
   }
@@ -575,15 +585,8 @@ export class SceneManager {
         // Set cabin bounds for footstep detection
         this.setupCabinFootstepBounds(cabin);
 
-        // Ensure firepit ends up at cabin marker (fallback to fireplace spot if marker missing)
-        if (this.firepitSystem) {
-          if (this.fireMarker) {
-            this.firepitSystem.setPosition(this.fireMarker);
-          } else {
-            // Fallback: center of fireplace from GLB data
-            this.firepitSystem.setPosition(new THREE.Vector3(-1.25, 0.58, -2.18));
-          }
-        }
+        // Firepit position will be set via deferred registration in update loop
+        // (firepitSystem may not exist yet when cabin loads)
 
         console.log('✅ Cabin model loaded successfully');
         console.log('   📏 Dimensions: 6.6m wide x 3.8m tall x 7.4m deep');
@@ -906,6 +909,65 @@ export class SceneManager {
     return true;
   }
 
+  /**
+   * Register windows for boarding - must be called AFTER boardingSystem is created
+   * Returns true if registration was successful
+   */
+  private registerWindowsForBoarding(): boolean {
+    if (this.windowsRegisteredForBoarding) {
+      return true; // Already done
+    }
+
+    if (!this.boardingSystem) {
+      return false; // Not ready yet
+    }
+
+    if (this.pendingWindowRegistrations.length === 0) {
+      return false; // No windows to register yet (cabin still loading)
+    }
+
+    console.log(`🪟 Registering ${this.pendingWindowRegistrations.length} windows for boarding...`);
+
+    for (const reg of this.pendingWindowRegistrations) {
+      this.boardingSystem.registerWindow(reg.mesh, {
+        anchor: reg.anchor,
+        size: reg.size,
+        rotation: reg.rotation
+      });
+    }
+
+    console.log(`✅ ${this.pendingWindowRegistrations.length} windows registered for boarding`);
+    this.windowsRegisteredForBoarding = true;
+    return true;
+  }
+
+  /**
+   * Set firepit position from cabin marker - must be called AFTER firepitSystem is created
+   * Returns true if position was set successfully
+   */
+  private setFirepitPosition(): boolean {
+    if (this.firepitPositionSet) {
+      return true; // Already done
+    }
+
+    if (!this.firepitSystem) {
+      return false; // Not ready yet
+    }
+
+    // Use fire marker from cabin if found, otherwise use fallback
+    if (this.fireMarker) {
+      this.firepitSystem.setPosition(this.fireMarker);
+      console.log('🔥 Firepit positioned at cabin marker');
+    } else {
+      // Fallback: center of fireplace from GLB data
+      this.firepitSystem.setPosition(new THREE.Vector3(-1.25, 0.58, -2.18));
+      console.log('🔥 Firepit positioned at fallback location');
+    }
+
+    this.firepitPositionSet = true;
+    return true;
+  }
+
   private async initializePropSystem(): Promise<void> {
     console.log('🪨 Initializing environmental props...');
 
@@ -1213,9 +1275,15 @@ export class SceneManager {
       this.nightman.update(deltaTime, this.playerController.position);
     }
 
-    // Try to register trees for chopping if not done yet (deferred registration)
+    // Deferred registration for systems that depend on async loading
     if (!this.treesRegisteredForChopping) {
       this.registerTreesForChopping();
+    }
+    if (!this.windowsRegisteredForBoarding) {
+      this.registerWindowsForBoarding();
+    }
+    if (!this.firepitPositionSet) {
+      this.setFirepitPosition();
     }
 
     // Update survival systems
